@@ -55,9 +55,19 @@ sudo docker run -itd --restart unless-stopped \
   ghcr.io/timshitpig/mantou-toolbox-backend:latest
 ```
 
-The equivalent executable wrapper is `docker-run.sh`; run
-`./docker-update.sh` after a new image is published. It pulls the latest image,
-recreates only the container, and keeps `$PWD/data` intact.
+The equivalent executable wrappers are `docker-run.sh` and
+`docker-update.sh`. For a cloned repository, run `sudo ./docker-update.sh`
+after a new image is published. For a host that only needs the updater, run:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh \
+  | sudo env IMAGE=ghcr.io/timshitpig/mantou-toolbox-backend:latest \
+      APP_BASE_URL=http://YOUR_SERVER_IP:8787 \
+      APP_SECRET=REPLACE_WITH_A_LONG_SECRET sh
+```
+
+It pulls the latest image, recreates only the container, and keeps `$PWD/data`
+intact.
 
 ## GitHub image and one-click updates
 
