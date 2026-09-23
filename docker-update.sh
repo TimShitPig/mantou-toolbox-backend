@@ -86,7 +86,7 @@ printf 'Admin password is stored in %s/.env (read with: sudo grep ^ADMIN_PASSWOR
 if [ "$FORCE_UPDATE" != 'true' ]; then
   CURRENT_REVISION="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$NAME" 2>/dev/null || true)"
   LATEST_RESPONSE="$(curl -fsS --connect-timeout 5 --max-time 10 https://api.github.com/repos/TimShitPig/mantou-toolbox-backend/commits/main 2>/dev/null || true)"
-  LATEST_REVISION="$(printf '%s\n' "$LATEST_RESPONSE" | sed -n 's/^[[:space:]]*"sha":[[:space:]]*"\([0-9a-f]*\)".*/\1/p' | head -n 1)"
+  LATEST_REVISION="$(printf '%s\n' "$LATEST_RESPONSE" | sed -n 's/.*"sha":[[:space:]]*"\([0-9a-f]*\)".*/\1/p' | head -n 1)"
   if [ "${#CURRENT_REVISION}" -eq 40 ] && [ "$CURRENT_REVISION" = "$LATEST_REVISION" ]; then
     printf 'Already up to date (%s); no image pull needed.\n' "$CURRENT_REVISION"
     exit 0

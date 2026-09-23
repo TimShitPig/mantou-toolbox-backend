@@ -10,7 +10,7 @@ mkdir -p "$TEMP_ROOT/bin" "$TEMP_ROOT/server"
 cat > "$TEMP_ROOT/bin/curl" <<'EOF'
 #!/usr/bin/env sh
 case "$*" in
-  *api.github.com*) printf '%s\n' '{"sha":"0123456789abcdef0123456789abcdef01234567"}' ;;
+  *api.github.com*) printf '%s\n' '{"sha": "0123456789abcdef0123456789abcdef01234567"}' ;;
   *) printf '%s\n' '198.51.100.27' ;;
 esac
 EOF
