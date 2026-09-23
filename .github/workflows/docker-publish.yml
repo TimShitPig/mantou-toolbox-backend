@@ -17,6 +17,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Test backend API
+        run: npm test
+
       - name: Check deployment script syntax
         run: |
           for script in docker-run.sh docker-update.sh deploy.sh update.sh; do

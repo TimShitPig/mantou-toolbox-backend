@@ -9,6 +9,7 @@ if [ -z "$PUBLIC_PORT" ] && [ -f "$PWD/.env" ]; then
 fi
 PUBLIC_PORT="${PUBLIC_PORT:-8787}"
 WECHAT_APP_ID="${WECHAT_APP_ID:-wx35d2ab50302daa5f}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 
 detect_public_ipv4() {
   for endpoint in https://api.ipify.org https://ifconfig.me/ip https://checkip.amazonaws.com; do
@@ -43,6 +44,7 @@ if [ ! -f "$PWD/.env" ]; then
     fi
   fi
   APP_SECRET="${APP_SECRET:-$(generate_secret)}"
+  ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(generate_secret)}"
   cat > "$PWD/.env" <<EOF
 NODE_ENV=production
 HOST=0.0.0.0
@@ -50,6 +52,7 @@ PORT=8787
 PUBLIC_PORT=${PUBLIC_PORT}
 APP_BASE_URL=${APP_BASE_URL}
 APP_SECRET=${APP_SECRET}
+ADMIN_PASSWORD=${ADMIN_PASSWORD}
 ALLOW_DEVELOPMENT_LOGIN=false
 WECHAT_APP_ID=${WECHAT_APP_ID}
 WECHAT_APP_SECRET=${WECHAT_APP_SECRET:-}
@@ -60,6 +63,24 @@ EOF
     printf '%s\n' 'WeChat profile login stays disabled until WECHAT_APP_SECRET is added to .env.'
   fi
 fi
+
+SAVED_ADMIN_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' "$PWD/.env" | tail -n 1)"
+if [ -z "$SAVED_ADMIN_PASSWORD" ]; then
+  ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(generate_secret)}"
+  if grep -q '^ADMIN_PASSWORD=' "$PWD/.env"; then
+    TEMP_ENV="$(mktemp)"
+    sed "s/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=${ADMIN_PASSWORD}/" "$PWD/.env" > "$TEMP_ENV"
+    cat "$TEMP_ENV" > "$PWD/.env"
+    rm -f "$TEMP_ENV"
+  else
+    printf '\nADMIN_PASSWORD=%s\n' "$ADMIN_PASSWORD" >> "$PWD/.env"
+  fi
+  chmod 600 "$PWD/.env"
+fi
+
+SAVED_APP_BASE_URL="$(sed -n 's/^APP_BASE_URL=//p' "$PWD/.env" | tail -n 1)"
+printf 'Admin UI: %s/admin\n' "${SAVED_APP_BASE_URL:-http://127.0.0.1:${PUBLIC_PORT}}"
+printf 'Admin password is stored in %s/.env (read with: sudo grep ^ADMIN_PASSWORD= %s/.env)\n' "$PWD" "$PWD"
 
 docker pull "$IMAGE"
 docker rm -f "$NAME" >/dev/null 2>&1 || true

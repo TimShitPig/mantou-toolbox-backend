@@ -2,6 +2,13 @@ const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const http = require('node:http')
 const path = require('node:path')
+const {
+  clearSessionCookie,
+  createSessionCookie,
+  requireAdmin,
+  revokeAdminSession,
+  verifyAdminPassword,
+} = require('./admin-auth')
 const { createAuth, AuthError } = require('./auth')
 const { createConfig } = require('./config')
 const { createDatabase } = require('./database')
@@ -98,6 +105,52 @@ function statusManifest(config, store, session) {
   }
 }
 
+const ADMIN_SETTING_DEFAULTS = [
+  'downloadEnabled',
+  'parseEnabled',
+  'qimaoEnabled',
+  'fanqieEnabled',
+  'downloadLimit',
+  'rewardedAdEnabled',
+  'rewardedAdEveryDownloads',
+  'cloudDirectLinkEnabled',
+]
+
+function adminSettingsView(config) {
+  return Object.fromEntries(ADMIN_SETTING_DEFAULTS.map((key) => [key, config[key]]))
+}
+
+function validateAdminSettings(patch) {
+  const allowed = new Set(ADMIN_SETTING_DEFAULTS)
+  const result = {}
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (!allowed.has(key)) {
+      throw new ApiError(400, `admin_setting_not_allowed:${key}`)
+    }
+    if (['downloadEnabled', 'parseEnabled', 'qimaoEnabled', 'fanqieEnabled', 'rewardedAdEnabled', 'cloudDirectLinkEnabled'].includes(key)) {
+      if (typeof value !== 'boolean') {
+        throw new ApiError(400, `admin_setting_invalid:${key}`)
+      }
+      result[key] = value
+      continue
+    }
+    const numeric = Number(value)
+    if (!Number.isInteger(numeric)) {
+      throw new ApiError(400, `admin_setting_invalid:${key}`)
+    }
+    const maximum = key === 'downloadLimit' ? 1000000 : 1000
+    const minimum = key === 'downloadLimit' ? 0 : 1
+    if (numeric < minimum || numeric > maximum) {
+      throw new ApiError(400, `admin_setting_out_of_range:${key}`)
+    }
+    result[key] = numeric
+  }
+  if (!Object.keys(result).length) {
+    throw new ApiError(400, 'admin_settings_empty')
+  }
+  return result
+}
+
 function assertSourceEnabled(identity, config) {
   if (identity.source === 'qimao' && !config.qimaoEnabled) {
     throw new ApiError(503, 'qimao_disabled')
@@ -163,6 +216,93 @@ function createApp(options = {}) {
   let server = null
   let closed = false
 
+  function getRuntimeConfig() {
+    return { ...config, ...store.getAdminSettings() }
+  }
+
+  function requireAdminSession(req) {
+    requireAdmin(req, config, store)
+  }
+
+  async function handleAdminAsset(req, res, pathname, origin) {
+    assertMethod(req, 'GET')
+    const assets = {
+      '/admin': ['admin.html', 'text/html; charset=utf-8'],
+      '/admin/': ['admin.html', 'text/html; charset=utf-8'],
+      '/admin.css': ['admin.css', 'text/css; charset=utf-8'],
+      '/admin.js': ['admin.js', 'text/javascript; charset=utf-8'],
+    }
+    const asset = assets[pathname]
+    if (!asset) {
+      throw new ApiError(404, 'not_found')
+    }
+    let body
+    try {
+      body = await fs.readFile(path.join(config.rootDir, 'public', asset[0]))
+    } catch {
+      throw new ApiError(404, 'admin_asset_not_found')
+    }
+    res.writeHead(200, {
+      ...corsHeaders(config, origin),
+      'Content-Type': asset[1],
+      'Content-Length': body.length,
+      'Cache-Control': 'no-cache',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+    })
+    res.end(body)
+  }
+
+  async function handleAdminLogin(req, res, origin) {
+    assertMethod(req, 'POST')
+    const body = await readJson(req, 16 * 1024)
+    const valid = verifyAdminPassword(body.password, config)
+    if (!valid) {
+      throw new ApiError(401, 'admin_password_invalid')
+    }
+    res.setHeader('Set-Cookie', createSessionCookie(req, config, store))
+    sendJson(res, config, 200, { data: { authenticated: true } }, origin)
+  }
+
+  async function handleAdminLogout(req, res, origin) {
+    assertMethod(req, 'POST')
+    revokeAdminSession(req, config, store)
+    res.setHeader('Set-Cookie', clearSessionCookie(req))
+    sendJson(res, config, 200, { data: { authenticated: false } }, origin)
+  }
+
+  async function handleAdminSummary(req, res, origin) {
+    assertMethod(req, 'GET')
+    requireAdminSession(req)
+    const runtimeConfig = getRuntimeConfig()
+    const summary = store.getAdminSummary(startOfUtcDay())
+    sendJson(res, config, 200, {
+      data: {
+        metrics: summary.metrics,
+        jobs: summary.jobs,
+        logs: summary.logs,
+        settings: adminSettingsView(runtimeConfig),
+        generatedAt: Date.now(),
+      },
+    }, origin)
+  }
+
+  async function handleAdminSettings(req, res, origin) {
+    requireAdminSession(req)
+    if (req.method === 'GET') {
+      sendJson(res, config, 200, { data: adminSettingsView(getRuntimeConfig()) }, origin)
+      return
+    }
+    assertMethod(req, 'PATCH')
+    const body = await readJson(req, 32 * 1024)
+    const patch = validateAdminSettings(body)
+    const current = getRuntimeConfig()
+    const settings = store.setAdminSettings(patch)
+    sendJson(res, config, 200, {
+      data: adminSettingsView({ ...current, ...settings }),
+    }, origin)
+  }
+
   async function runDownloadJob(jobId) {
     const job = store.markJobRunning(jobId)
     if (!job) {
@@ -170,7 +310,8 @@ function createApp(options = {}) {
     }
 
     try {
-      const text = await buildDownloadText(config, job.book, job.link)
+      const runtimeConfig = getRuntimeConfig()
+      const text = await buildDownloadText(runtimeConfig, job.book, job.link)
       const output = Buffer.from(String(text || ''), 'utf8')
       if (!output.length) {
         throw new Error('download_content_empty')
@@ -186,7 +327,7 @@ function createApp(options = {}) {
           status: job.book.status,
         },
         panLinks: [],
-        directLinkEnabled: config.cloudDirectLinkEnabled,
+        directLinkEnabled: runtimeConfig.cloudDirectLinkEnabled,
       }
       store.completeJob(job.id, manifest, filePath)
     } catch (error) {
@@ -295,24 +436,25 @@ function createApp(options = {}) {
   async function handleDownloadStatus(req, res, url, origin) {
     assertMethod(req, 'GET')
     const session = auth.getOptionalSession(req.headers, url)
-    sendJson(res, config, 200, { data: statusManifest(config, store, session) }, origin)
+    sendJson(res, config, 200, { data: statusManifest(getRuntimeConfig(), store, session) }, origin)
   }
 
   async function handleParse(req, res, url, origin) {
     assertMethod(req, 'POST')
     auth.getOptionalSession(req.headers, url)
-    if (!config.downloadEnabled) {
+    const runtimeConfig = getRuntimeConfig()
+    if (!runtimeConfig.downloadEnabled) {
       throw new ApiError(503, 'download_disabled')
     }
-    if (!config.parseEnabled) {
+    if (!runtimeConfig.parseEnabled) {
       throw new ApiError(503, 'parse_disabled')
     }
     const body = await readJson(req)
     let result
     try {
       const identity = identifyNovelLink(body.link)
-      assertSourceEnabled(identity, config)
-      result = await parseNovel(body.link, config)
+      assertSourceEnabled(identity, runtimeConfig)
+      result = await parseNovel(body.link, runtimeConfig)
     } catch (error) {
       if (error instanceof ApiError || error instanceof AuthError) {
         throw error
@@ -325,7 +467,8 @@ function createApp(options = {}) {
   async function handleGenerate(req, res, url, origin) {
     assertMethod(req, 'POST')
     const session = auth.getOptionalSession(req.headers, url)
-    if (!config.downloadEnabled) {
+    const runtimeConfig = getRuntimeConfig()
+    if (!runtimeConfig.downloadEnabled) {
       throw new ApiError(503, 'download_disabled')
     }
     const body = await readJson(req)
@@ -335,8 +478,8 @@ function createApp(options = {}) {
     } catch (error) {
       throw new ApiError(Number(error && error.status) || 400, String(error && error.message || 'unsupported_link'))
     }
-    assertSourceEnabled(identity, config)
-    const status = statusManifest(config, store, session)
+    assertSourceEnabled(identity, runtimeConfig)
+    const status = statusManifest(runtimeConfig, store, session)
     if (status.downloadCountReached) {
       throw new ApiError(429, 'download_limit_reached')
     }
@@ -466,6 +609,23 @@ function createApp(options = {}) {
     try {
       url = new URL(requestOrigin(req, config))
       const pathname = url.pathname
+      if (pathname === '/') {
+        assertMethod(req, 'GET')
+        res.writeHead(302, {
+          ...corsHeaders(config, origin),
+          Location: '/admin',
+          'Cache-Control': 'no-store',
+        })
+        res.end()
+        return
+      }
+      if (pathname === '/admin' || pathname === '/admin/' || pathname === '/admin.css' || pathname === '/admin.js') {
+        return await handleAdminAsset(req, res, pathname, origin)
+      }
+      if (pathname === '/api/admin/login') return await handleAdminLogin(req, res, origin)
+      if (pathname === '/api/admin/logout') return await handleAdminLogout(req, res, origin)
+      if (pathname === '/api/admin/summary') return await handleAdminSummary(req, res, origin)
+      if (pathname === '/api/admin/settings') return await handleAdminSettings(req, res, origin)
       if (pathname === '/healthz') {
         assertMethod(req, 'GET')
         sendJson(res, config, 200, { data: { status: 'ok' } }, origin)
@@ -485,7 +645,7 @@ function createApp(options = {}) {
       if (pathname.startsWith('/uploads/avatars/')) return await handleAvatarFile(req, res, pathname, origin)
       throw new ApiError(404, 'not_found')
     } catch (error) {
-      if (!(error instanceof ApiError) && !(error instanceof AuthError)) {
+      if (!error.expose && !(error instanceof ApiError) && !(error instanceof AuthError)) {
         console.error('Unhandled request error:', error)
       }
       sendError(res, config, error, origin)

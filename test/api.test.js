@@ -82,6 +82,7 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     avatarDir: path.join(storageDir, 'avatars'),
     downloadDir: path.join(storageDir, 'downloads'),
     appSecret: 'test',
+    adminPassword: 'integration-admin-password',
     allowDevelopmentLogin: true,
   })
   const app = createApp({ config })
@@ -93,6 +94,12 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     const health = await requestJson(baseUrl, '/healthz')
     assert.equal(health.response.status, 200)
     assert.deepEqual(health.payload, { data: { status: 'ok' } })
+
+    const adminPage = await fetch(new URL('/admin', baseUrl))
+    assert.equal(adminPage.status, 200)
+    assert.match(await adminPage.text(), /馒头工具箱/)
+    const anonymousAdmin = await requestJson(baseUrl, '/api/admin/summary')
+    assert.equal(anonymousAdmin.response.status, 401)
 
     const unauthenticatedProfile = await requestJson(baseUrl, '/api/v1/auth/profile.php')
     assert.equal(unauthenticatedProfile.response.status, 401)
@@ -223,6 +230,71 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     })
     assert.equal(statusAfterDownload.response.status, 200)
     assert.equal(statusAfterDownload.payload.data.downloadCountUsed, 1)
+
+    const badAdminLogin = await requestJson(
+      baseUrl,
+      '/api/admin/login',
+      jsonRequest('POST', { password: 'incorrect-password' })
+    )
+    assert.equal(badAdminLogin.response.status, 401)
+    assert.equal(badAdminLogin.payload.message, 'admin_password_invalid')
+
+    const adminLogin = await requestJson(
+      baseUrl,
+      '/api/admin/login',
+      jsonRequest('POST', { password: 'integration-admin-password' })
+    )
+    assert.equal(adminLogin.response.status, 200)
+    const setCookie = adminLogin.response.headers.get('set-cookie')
+    assert.match(setCookie, /HttpOnly/)
+    assert.match(setCookie, /SameSite=Strict/)
+    const adminCookie = setCookie.split(';')[0]
+
+    const adminSummary = await requestJson(baseUrl, '/api/admin/summary', {
+      headers: { Cookie: adminCookie },
+    })
+    assert.equal(adminSummary.response.status, 200)
+    assert.equal(adminSummary.payload.data.metrics.users, 1)
+    assert.equal(adminSummary.payload.data.metrics.jobs_completed_today, 1)
+    assert.equal(adminSummary.payload.data.settings.downloadEnabled, true)
+    assert.equal(adminSummary.payload.data.jobs[0].title, 'Integration Book')
+
+    const updateSettings = await requestJson(
+      baseUrl,
+      '/api/admin/settings',
+      {
+        method: 'PATCH',
+        headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qimaoEnabled: false, downloadLimit: 7 }),
+      }
+    )
+    assert.equal(updateSettings.response.status, 200)
+    assert.equal(updateSettings.payload.data.qimaoEnabled, false)
+    assert.equal(updateSettings.payload.data.downloadLimit, 7)
+
+    const updatedDownloadStatus = await requestJson(baseUrl, '/api/download/status.php')
+    assert.equal(updatedDownloadStatus.payload.data.qimaoEnabled, false)
+    assert.equal(updatedDownloadStatus.payload.data.downloadLimitEnabled, true)
+    assert.equal(updatedDownloadStatus.payload.data.downloadLimit, 7)
+
+    const disabledQimaoParse = await requestJson(
+      baseUrl,
+      '/api/download/parse.php',
+      jsonRequest('POST', { link: qimaoLink })
+    )
+    assert.equal(disabledQimaoParse.response.status, 503)
+    assert.equal(disabledQimaoParse.payload.message, 'qimao_disabled')
+
+    const adminLogout = await fetch(new URL('/api/admin/logout', baseUrl), {
+      method: 'POST',
+      headers: { Cookie: adminCookie },
+    })
+    assert.equal(adminLogout.status, 200)
+    assert.match(adminLogout.headers.get('set-cookie'), /Max-Age=0/)
+    const loggedOutAdmin = await requestJson(baseUrl, '/api/admin/summary', {
+      headers: { Cookie: adminCookie },
+    })
+    assert.equal(loggedOutAdmin.response.status, 401)
   } finally {
     await app.close()
     await fs.rm(temporaryRoot, { recursive: true, force: true })

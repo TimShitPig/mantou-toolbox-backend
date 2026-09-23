@@ -12,7 +12,19 @@ sudo mkdir -p /opt/mantou-toolbox && cd /opt/mantou-toolbox && curl -fsSL https:
 
 脚本会自动拉取镜像并启动容器。首次运行会创建 `.env`、数据目录和内容目录，生成随机 `APP_SECRET`，并探测服务器公网 IPv4 来设置 `APP_BASE_URL`。配置文件权限为仅 root 可读写，无需手工填写服务器 IP 或随机密钥。
 
+后台管理页地址为 `APP_BASE_URL/admin`。首次部署会自动生成管理员口令并保存到 `.env`，脚本会打印读取命令：
+
+```sh
+sudo grep '^ADMIN_PASSWORD=' /opt/mantou-toolbox/.env
+```
+
+更新部署会保留原管理员口令、服务器地址和端口。
+
 微信 AppID 会从本项目配置自动写入。微信 AppSecret 由微信公众平台单独发放，不能自动生成；未配置时服务仍会部署并提供下载接口，微信资料登录保持关闭。需要登录时再将 AppSecret 写入 `/opt/mantou-toolbox/.env` 并重启容器。
+
+后台面板支持服务总开关、解析开关、七猫/番茄来源开关、每日下载上限、激励广告和直链设置；同时显示用户数、下载任务和客户端错误日志。
+
+管理会话有效期为 8 小时。正式使用请通过 HTTPS 反向代理访问后台。
 
 检查服务：
 
@@ -50,6 +62,7 @@ docker compose up -d --build
 ```
 
 Windows 可运行 `deploy.ps1`；Linux/macOS 可运行 `./deploy.sh`。Compose 会将数据库、头像和生成文件保存在 `mantou-storage` 命名卷中。
+使用 Compose 时，请在 `.env` 中设置随机 `APP_SECRET` 和 `ADMIN_PASSWORD`，否则管理面板会保持关闭。
 
 ## 自动发布镜像
 
@@ -70,6 +83,8 @@ Copy-Item .env.example .env
 npm start
 npm test
 ```
+
+本地运行管理面板时，在 `.env` 中设置 `ADMIN_PASSWORD`。
 
 默认地址为 `http://127.0.0.1:8787`。首次启动会创建 `storage/mantou.sqlite`、`storage/avatars` 和 `storage/downloads`。
 

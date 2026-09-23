@@ -5,6 +5,7 @@ class AuthError extends Error {
     super(message)
     this.name = 'AuthError'
     this.status = status
+    this.expose = true
   }
 }
 

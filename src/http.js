@@ -6,6 +6,7 @@ class ApiError extends Error {
     this.name = 'ApiError'
     this.status = status
     this.details = details
+    this.expose = true
   }
 }
 
@@ -34,7 +35,7 @@ function sendJson(res, config, status, payload, origin) {
 
 function sendError(res, config, error, origin) {
   const status = Number(error && error.status) || 500
-  const message = status >= 500 ? 'internal_error' : String(error && error.message || 'bad_request')
+  const message = status >= 500 && !error.expose ? 'internal_error' : String(error && error.message || 'bad_request')
   const payload = { message }
   if (error && error.details && status < 500) {
     payload.details = error.details

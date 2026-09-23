@@ -16,6 +16,7 @@ services:
       PORT: "8787"
       APP_BASE_URL: "${APP_BASE_URL:-http://127.0.0.1:${PUBLIC_PORT:-8787}}"
       APP_SECRET: "${APP_SECRET:-change-this-secret-before-production}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
       CORS_ALLOW_ORIGIN: "${CORS_ALLOW_ORIGIN:-*}"
       ALLOW_DEVELOPMENT_LOGIN: "${ALLOW_DEVELOPMENT_LOGIN:-false}"
       SESSION_TTL_DAYS: "${SESSION_TTL_DAYS:-30}"

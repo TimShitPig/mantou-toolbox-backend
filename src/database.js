@@ -101,6 +101,19 @@ function createDatabase(databasePath) {
       FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      id TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      revoked_at INTEGER
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_download_jobs_owner ON download_jobs(owner_user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_client_logs_created ON client_logs(created_at);
@@ -156,6 +169,27 @@ function createDatabase(databasePath) {
       `INSERT INTO client_logs (id, user_id, level, scope, message, request_id, meta_json, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ),
+    getSettings: db.prepare('SELECT key, value_json FROM app_settings'),
+    setSetting: db.prepare(
+      `INSERT INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`
+    ),
+    createAdminSession: db.prepare(
+      'INSERT INTO admin_sessions (id, expires_at, created_at) VALUES (?, ?, ?)'
+    ),
+    getAdminSession: db.prepare('SELECT * FROM admin_sessions WHERE id = ?'),
+    revokeAdminSession: db.prepare('UPDATE admin_sessions SET revoked_at = ? WHERE id = ?'),
+    adminMetrics: db.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM users) AS users,
+         (SELECT COUNT(*) FROM download_jobs WHERE created_at >= ?) AS jobs_today,
+         (SELECT COUNT(*) FROM download_jobs WHERE status IN ('queued', 'running')) AS jobs_active,
+         (SELECT COUNT(*) FROM download_jobs WHERE status = 'completed' AND created_at >= ?) AS jobs_completed_today,
+         (SELECT COUNT(*) FROM download_jobs WHERE status = 'failed' AND created_at >= ?) AS jobs_failed_today,
+         (SELECT COUNT(*) FROM client_logs WHERE level = 'error' AND created_at >= ?) AS errors_24h`
+    ),
+    adminJobs: db.prepare('SELECT * FROM download_jobs ORDER BY created_at DESC LIMIT ?'),
+    adminLogs: db.prepare('SELECT * FROM client_logs ORDER BY created_at DESC LIMIT ?'),
   }
 
   function upsertUser(provider, subject, profile) {
@@ -264,6 +298,73 @@ function createDatabase(databasePath) {
         JSON.stringify(entry.meta || {}),
         entry.createdAt
       )
+    },
+    getAdminSettings() {
+      const output = {}
+      for (const row of statements.getSettings.all()) {
+        output[row.key] = parseJson(row.value_json, null)
+      }
+      return output
+    },
+    setAdminSettings(settings) {
+      const now = Date.now()
+      db.exec('BEGIN')
+      try {
+        for (const [key, value] of Object.entries(settings)) {
+          statements.setSetting.run(key, JSON.stringify(value), now)
+        }
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+      return this.getAdminSettings()
+    },
+    createAdminSession(session) {
+      statements.createAdminSession.run(session.id, session.expiresAt, session.createdAt)
+    },
+    getAdminSession(id) {
+      const row = statements.getAdminSession.get(id)
+      if (!row) return null
+      return {
+        id: row.id,
+        expiresAt: Number(row.expires_at),
+        createdAt: Number(row.created_at),
+        revokedAt: row.revoked_at === null ? null : Number(row.revoked_at),
+      }
+    },
+    revokeAdminSession(id) {
+      statements.revokeAdminSession.run(Date.now(), id)
+    },
+    getAdminSummary(since) {
+      const metrics = statements.adminMetrics.get(since, since, since, Date.now() - 24 * 60 * 60 * 1000)
+      const jobs = statements.adminJobs.all(12).map((row) => {
+        const job = toJob(row)
+        return {
+          id: job.id,
+          source: job.source,
+          title: String(job.book && job.book.title || '未命名书籍'),
+          status: job.status,
+          error: job.error,
+          createdAt: job.createdAt,
+          updatedAt: job.updatedAt,
+        }
+      })
+      const logs = statements.adminLogs.all(12).map((row) => ({
+        id: row.id,
+        userId: row.user_id === null ? null : String(row.user_id),
+        level: row.level,
+        scope: row.scope,
+        message: row.message,
+        requestId: row.request_id,
+        meta: parseJson(row.meta_json, {}),
+        createdAt: Number(row.created_at || 0),
+      }))
+      return {
+        metrics: Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, Number(value || 0)])),
+        jobs,
+        logs,
+      }
     },
   }
 }

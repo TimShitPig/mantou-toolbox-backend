@@ -54,6 +54,7 @@ function createConfig(env = process.env, overrides = {}) {
     downloadDir: path.resolve(env.DOWNLOAD_DIR || path.join(storageDir, 'downloads')),
     appBaseUrl,
     appSecret: String(env.APP_SECRET || 'development-only-change-me').trim(),
+    adminPassword: String(env.ADMIN_PASSWORD || '').trim(),
     corsAllowOrigin: String(env.CORS_ALLOW_ORIGIN || '*').trim(),
     allowDevelopmentLogin: bool(env.ALLOW_DEVELOPMENT_LOGIN, mode !== 'production'),
     sessionTtlSeconds: integer(env.SESSION_TTL_DAYS, 30, 1) * 24 * 60 * 60,

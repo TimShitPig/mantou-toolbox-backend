@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>馒头工具箱 · 管理后台</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <main id="login-view" class="login-layout">
+    <form id="login-form" class="login-panel">
+      <div class="brand-mark" aria-hidden="true">MT</div>
+      <p class="eyebrow">MANTOU TOOLBOX</p>
+      <h1>管理后台</h1>
+      <label class="field-label" for="admin-password">管理员口令</label>
+      <input id="admin-password" name="password" type="password" autocomplete="current-password" required>
+      <button class="button button-primary button-wide" type="submit">登录</button>
+      <p id="login-message" class="form-message" role="status"></p>
+    </form>
+  </main>
+
+  <div id="dashboard-view" class="app-shell" hidden>
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">MT</div>
+        <div>
+          <p class="eyebrow">MANTOU TOOLBOX</p>
+          <h1>管理后台</h1>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="updated-at" class="updated-at">尚未刷新</span>
+        <button id="refresh-button" class="button button-secondary" type="button">刷新</button>
+        <button id="logout-button" class="button button-quiet" type="button">退出</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="metrics" aria-label="运行概况">
+        <article class="metric metric-status">
+          <span class="metric-label">服务状态</span>
+          <strong id="service-status" class="metric-value">检查中</strong>
+          <span class="metric-foot">Node.js API</span>
+        </article>
+        <article class="metric">
+          <span class="metric-label">注册用户</span>
+          <strong id="users-count" class="metric-value">--</strong>
+          <span class="metric-foot">累计账户</span>
+        </article>
+        <article class="metric">
+          <span class="metric-label">今日任务</span>
+          <strong id="jobs-today" class="metric-value">--</strong>
+          <span class="metric-foot">下载生成请求</span>
+        </article>
+        <article class="metric">
+          <span class="metric-label">进行中</span>
+          <strong id="jobs-active" class="metric-value">--</strong>
+          <span class="metric-foot">排队或生成中</span>
+        </article>
+        <article class="metric">
+          <span class="metric-label">今日失败</span>
+          <strong id="jobs-failed" class="metric-value metric-value-alert">--</strong>
+          <span class="metric-foot">生成任务</span>
+        </article>
+        <article class="metric">
+          <span class="metric-label">24 小时错误日志</span>
+          <strong id="errors-24h" class="metric-value metric-value-alert">--</strong>
+          <span class="metric-foot">客户端报告</span>
+        </article>
+      </section>
+
+      <section class="settings-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">SERVICE CONTROL</p>
+            <h2>功能配置</h2>
+          </div>
+          <span id="settings-state" class="section-state">读取中</span>
+        </div>
+        <form id="settings-form">
+          <div class="settings-grid">
+            <label class="setting-row">
+              <span class="setting-copy"><strong>下载服务</strong><small>允许创建下载任务</small></span>
+              <input name="downloadEnabled" type="checkbox">
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+            <label class="setting-row">
+              <span class="setting-copy"><strong>链接解析</strong><small>允许解析书籍链接</small></span>
+              <input name="parseEnabled" type="checkbox">
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+            <label class="setting-row">
+              <span class="setting-copy"><strong>七猫来源</strong><small>接收七猫小说链接</small></span>
+              <input name="qimaoEnabled" type="checkbox">
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+            <label class="setting-row">
+              <span class="setting-copy"><strong>番茄来源</strong><small>接收番茄小说链接</small></span>
+              <input name="fanqieEnabled" type="checkbox">
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+            <label class="setting-row">
+              <span class="setting-copy"><strong>激励广告</strong><small>按下载周期要求观看</small></span>
+              <input name="rewardedAdEnabled" type="checkbox">
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+            <label class="setting-row">
+              <span class="setting-copy"><strong>直链下载</strong><small>在下载结果中提供文件直链</small></span>
+              <input name="cloudDirectLinkEnabled" type="checkbox">
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+            <label class="setting-row setting-row-number">
+              <span class="setting-copy"><strong>每日下载上限</strong><small>0 表示不限制</small></span>
+              <input name="downloadLimit" class="number-input" type="number" min="0" max="1000000" step="1" inputmode="numeric">
+            </label>
+            <label class="setting-row setting-row-number">
+              <span class="setting-copy"><strong>广告周期</strong><small>每多少次成功下载触发</small></span>
+              <input name="rewardedAdEveryDownloads" class="number-input" type="number" min="1" max="1000" step="1" inputmode="numeric">
+            </label>
+          </div>
+          <div class="form-footer">
+            <span id="settings-message" class="form-message" role="status"></span>
+            <button id="save-settings" class="button button-primary" type="submit">保存配置</button>
+          </div>
+        </form>
+      </section>
+
+      <div class="activity-grid">
+        <section class="activity-section">
+          <div class="section-heading section-heading-compact">
+            <div><p class="eyebrow">DOWNLOADS</p><h2>最近任务</h2></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>书名</th><th>来源</th><th>状态</th><th>时间</th><th>错误</th></tr></thead>
+              <tbody id="jobs-body"><tr><td class="empty-cell" colspan="5">暂无任务</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="activity-section">
+          <div class="section-heading section-heading-compact">
+            <div><p class="eyebrow">CLIENT REPORTS</p><h2>最近日志</h2></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>级别</th><th>模块</th><th>消息</th><th>时间</th></tr></thead>
+              <tbody id="logs-body"><tr><td class="empty-cell" colspan="4">暂无日志</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

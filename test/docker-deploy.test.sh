@@ -36,6 +36,8 @@ grep -Fqx 'ALLOW_DEVELOPMENT_LOGIN=false' "$ENV_FILE"
 [ "$(stat -c '%a' "$ENV_FILE")" = '600' ]
 SECRET="$(sed -n 's/^APP_SECRET=//p' "$ENV_FILE")"
 [ "${#SECRET}" -eq 64 ]
+ADMIN_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' "$ENV_FILE")"
+[ "${#ADMIN_PASSWORD}" -eq 64 ]
 grep -Fq -- '-p 6185:8787' "$TEMP_ROOT/docker-calls"
 grep -Fq -- '--env-file '"$ENV_FILE" "$TEMP_ROOT/docker-calls"
 
@@ -49,5 +51,20 @@ BEFORE="$(sha256sum "$ENV_FILE" | cut -d' ' -f1)"
 AFTER="$(sha256sum "$ENV_FILE" | cut -d' ' -f1)"
 [ "$BEFORE" = "$AFTER" ]
 grep -Fq -- '-p 6185:8787' "$TEMP_ROOT/docker-calls-update"
+
+mkdir -p "$TEMP_ROOT/legacy"
+sed '/^ADMIN_PASSWORD=/d' "$ENV_FILE" > "$TEMP_ROOT/legacy/.env"
+OLD_SECRET="$(sed -n 's/^APP_SECRET=//p' "$TEMP_ROOT/legacy/.env")"
+(
+  cd "$TEMP_ROOT/legacy"
+  PATH="$TEMP_ROOT/bin:$PATH" \
+    DOCKER_CALLS="$TEMP_ROOT/docker-calls-legacy" \
+    sh "$ROOT/docker-update.sh"
+)
+MIGRATED_ADMIN_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' "$TEMP_ROOT/legacy/.env")"
+MIGRATED_SECRET="$(sed -n 's/^APP_SECRET=//p' "$TEMP_ROOT/legacy/.env")"
+[ "${#MIGRATED_ADMIN_PASSWORD}" -eq 64 ]
+[ "$MIGRATED_SECRET" = "$OLD_SECRET" ]
+[ "$(stat -c '%a' "$TEMP_ROOT/legacy/.env")" = '600' ]
 
 printf '%s\n' 'deployment config generation and update preservation passed'

@@ -11,6 +11,8 @@ ENV NODE_ENV=production \
 COPY package.json ./
 COPY server.js ./
 COPY src ./src
+COPY public ./public
+COPY public ./public
 
 RUN mkdir -p /app/storage/avatars /app/storage/downloads \
     && chown -R node:node /app
