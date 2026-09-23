@@ -10,7 +10,7 @@
 sudo mkdir -p /opt/mantou-toolbox && cd /opt/mantou-toolbox && curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-run.sh | sudo sh
 ```
 
-脚本会自动拉取镜像并启动容器。首次运行会创建 `.env`、数据目录和内容目录，生成随机 `APP_SECRET`，并探测服务器公网 IPv4 来设置 `APP_BASE_URL`。配置文件权限为仅 root 可读写，无需手工填写服务器 IP 或随机密钥。
+脚本会自动拉取镜像并启动容器。首次运行会创建 `.env`、数据目录和内容目录，生成随机 `APP_SECRET`，并探测服务器公网 IPv4 来设置 `APP_BASE_URL`。配置文件权限为仅 root 可读写，无需手工填写服务器 IP 或随机密钥。脚本也会将数据目录权限调整为容器运行用户可写，避免 SQLite 无法打开数据库。
 
 后台管理页地址为 `APP_BASE_URL/admin`。首次部署会自动生成管理员口令并保存到 `.env`，脚本会打印读取命令：
 

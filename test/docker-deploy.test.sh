@@ -39,6 +39,13 @@ SECRET="$(sed -n 's/^APP_SECRET=//p' "$ENV_FILE")"
 ADMIN_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' "$ENV_FILE")"
 [ "${#ADMIN_PASSWORD}" -eq 64 ]
 grep -Fq -- '-p 6185:8787' "$TEMP_ROOT/docker-calls"
+EXPECTED_UID="$(id -u)"
+EXPECTED_GID="$(id -g)"
+if [ "$EXPECTED_UID" -eq 0 ]; then
+  EXPECTED_UID=1000
+  EXPECTED_GID=1000
+fi
+grep -Fq -- "--user ${EXPECTED_UID}:${EXPECTED_GID}" "$TEMP_ROOT/docker-calls"
 grep -Fq -- '--env-file '"$ENV_FILE" "$TEMP_ROOT/docker-calls"
 
 BEFORE="$(sha256sum "$ENV_FILE" | cut -d' ' -f1)"
@@ -51,6 +58,7 @@ BEFORE="$(sha256sum "$ENV_FILE" | cut -d' ' -f1)"
 AFTER="$(sha256sum "$ENV_FILE" | cut -d' ' -f1)"
 [ "$BEFORE" = "$AFTER" ]
 grep -Fq -- '-p 6185:8787' "$TEMP_ROOT/docker-calls-update"
+grep -Fq -- "--user ${EXPECTED_UID}:${EXPECTED_GID}" "$TEMP_ROOT/docker-calls-update"
 
 mkdir -p "$TEMP_ROOT/legacy"
 sed '/^ADMIN_PASSWORD=/d' "$ENV_FILE" > "$TEMP_ROOT/legacy/.env"

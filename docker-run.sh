@@ -84,8 +84,15 @@ printf 'Admin password is stored in %s/.env (read with: sudo grep ^ADMIN_PASSWOR
 
 docker pull "$IMAGE"
 docker rm -f "$NAME" >/dev/null 2>&1 || true
+if [ "$(id -u)" -eq 0 ]; then
+  chown -R 1000:1000 "$PWD/data"
+  CONTAINER_USER='1000:1000'
+else
+  CONTAINER_USER="$(id -u):$(id -g)"
+fi
 docker run -itd \
   --restart unless-stopped \
+  --user "$CONTAINER_USER" \
   --env-file "$PWD/.env" \
   -p "${PUBLIC_PORT}:8787" \
   -v "$PWD/data:/app/storage" \
