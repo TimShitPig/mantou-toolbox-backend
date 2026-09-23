@@ -97,7 +97,13 @@ test('HTTP API workflow starts a real server and persists local state', async ()
 
     const adminPage = await fetch(new URL('/admin', baseUrl))
     assert.equal(adminPage.status, 200)
-    assert.match(await adminPage.text(), /馒头工具箱/)
+    const adminMarkup = await adminPage.text()
+    assert.match(adminMarkup, /馒头工具箱/)
+    assert.match(adminMarkup, /aria-label="后台导航"/)
+    for (const page of ['novel', 'logs', 'data', 'ads', 'status']) {
+      assert.match(adminMarkup, new RegExp(`data-page="${page}"`))
+      assert.match(adminMarkup, new RegExp(`id="page-${page}"`))
+    }
     const anonymousAdmin = await requestJson(baseUrl, '/api/admin/summary')
     assert.equal(anonymousAdmin.response.status, 401)
 

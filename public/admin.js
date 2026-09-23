@@ -1,12 +1,32 @@
 (() => {
+  const pageNames = ['novel', 'logs', 'data', 'ads', 'status']
   const loginView = document.getElementById('login-view')
   const dashboardView = document.getElementById('dashboard-view')
   const loginForm = document.getElementById('login-form')
   const loginMessage = document.getElementById('login-message')
-  const settingsForm = document.getElementById('settings-form')
-  const settingsMessage = document.getElementById('settings-message')
-  const settingsState = document.getElementById('settings-state')
-  const saveButton = document.getElementById('save-settings')
+  const navItems = [...document.querySelectorAll('.nav-item')]
+  let latestData = null
+
+  const settingForms = {
+    novel: {
+      form: document.getElementById('novel-settings-form'),
+      keys: ['qimaoEnabled', 'fanqieEnabled'],
+      message: document.getElementById('novel-settings-message'),
+      state: document.getElementById('novel-settings-state'),
+    },
+    ads: {
+      form: document.getElementById('ads-settings-form'),
+      keys: ['rewardedAdEnabled', 'rewardedAdEveryDownloads', 'cloudDirectLinkEnabled'],
+      message: document.getElementById('ads-settings-message'),
+      state: document.getElementById('ads-settings-state'),
+    },
+    status: {
+      form: document.getElementById('status-settings-form'),
+      keys: ['downloadEnabled', 'parseEnabled', 'downloadLimit'],
+      message: document.getElementById('status-settings-message'),
+      state: document.getElementById('status-settings-state'),
+    },
+  }
 
   function setMessage(element, message, type) {
     element.textContent = message || ''
@@ -23,6 +43,22 @@
   function showDashboard() {
     loginView.hidden = true
     dashboardView.hidden = false
+  }
+
+  function setPage(page, updateHash = true) {
+    const selectedPage = pageNames.includes(page) ? page : 'novel'
+    for (const name of pageNames) {
+      document.getElementById(`page-${name}`).hidden = name !== selectedPage
+    }
+    for (const item of navItems) {
+      const active = item.dataset.page === selectedPage
+      item.classList.toggle('is-active', active)
+      if (active) item.setAttribute('aria-current', 'page')
+      else item.removeAttribute('aria-current')
+    }
+    if (updateHash && location.hash !== `#${selectedPage}`) {
+      history.replaceState(null, '', `#${selectedPage}`)
+    }
   }
 
   async function api(path, options = {}) {
@@ -87,12 +123,11 @@
       const row = document.createElement('tr')
       appendCell(row, item.title || item.id, 'cell-title')
       appendCell(row, sourceLabel(item.source), 'cell-muted')
-      const status = appendCell(row, statusLabel(item.status))
-      status.firstChild?.remove()
+      const statusCell = appendCell(row, '')
       const pill = document.createElement('span')
       pill.className = `status-pill${item.status === 'completed' ? ' completed' : ''}${item.status === 'failed' ? ' failed' : ''}`
       pill.textContent = statusLabel(item.status)
-      status.appendChild(pill)
+      statusCell.appendChild(pill)
       appendCell(row, formatDate(item.createdAt), 'cell-muted')
       appendCell(row, item.error || '—', item.error ? 'cell-error' : 'cell-muted')
       body.appendChild(row)
@@ -102,9 +137,10 @@
   function renderLogs(items) {
     const body = document.getElementById('logs-body')
     body.replaceChildren()
+    document.getElementById('log-count').textContent = `最近 ${items.length} 条`
     if (!items.length) {
       const row = document.createElement('tr')
-      appendCell(row, '暂无日志', 'empty-cell').colSpan = 4
+      appendCell(row, '暂无日志', 'empty-cell').colSpan = 5
       body.appendChild(row)
       return
     }
@@ -115,40 +151,73 @@
       if (item.level === 'warn') level.className = 'level-warn'
       appendCell(row, item.scope || 'client', 'cell-muted')
       appendCell(row, item.message || '—')
+      appendCell(row, item.userId || '访客', 'cell-muted')
       appendCell(row, formatDate(item.createdAt), 'cell-muted')
       body.appendChild(row)
     }
   }
 
   function renderSettings(settings) {
-    for (const key of ['downloadEnabled', 'parseEnabled', 'qimaoEnabled', 'fanqieEnabled', 'rewardedAdEnabled', 'cloudDirectLinkEnabled']) {
-      settingsForm.elements[key].checked = Boolean(settings[key])
+    for (const { form, keys } of Object.values(settingForms)) {
+      for (const key of keys) {
+        const input = form.elements[key]
+        if (input.type === 'checkbox') input.checked = Boolean(settings[key])
+        else input.value = String(settings[key] ?? 0)
+      }
     }
-    settingsForm.elements.downloadLimit.value = String(settings.downloadLimit ?? 0)
-    settingsForm.elements.rewardedAdEveryDownloads.value = String(settings.rewardedAdEveryDownloads ?? 3)
+  }
+
+  function renderMetrics(metrics) {
+    setText('users-count', metrics.users)
+    setText('jobs-today', metrics.jobs_today)
+    setText('jobs-completed', metrics.jobs_completed_today)
+    setText('jobs-active', metrics.jobs_active)
+    setText('jobs-failed', metrics.jobs_failed_today)
   }
 
   async function refreshDashboard() {
-    settingsState.textContent = '更新中'
+    for (const group of Object.values(settingForms)) group.state.textContent = '同步中'
     try {
-      const data = await api('/api/admin/summary')
+      latestData = await api('/api/admin/summary')
       showDashboard()
-      setText('service-status', '运行中')
-      setText('users-count', data.metrics.users)
-      setText('jobs-today', data.metrics.jobs_today)
-      setText('jobs-active', data.metrics.jobs_active)
-      setText('jobs-failed', data.metrics.jobs_failed_today)
-      setText('errors-24h', data.metrics.errors_24h)
-      setText('updated-at', `更新于 ${formatDate(data.generatedAt)}`)
-      renderJobs(data.jobs || [])
-      renderLogs(data.logs || [])
-      renderSettings(data.settings || {})
-      settingsState.textContent = '配置已同步'
-      setMessage(settingsMessage, '', '')
+      renderMetrics(latestData.metrics || {})
+      renderJobs(latestData.jobs || [])
+      renderLogs(latestData.logs || [])
+      renderSettings(latestData.settings || {})
+      setText('status-updated-at', formatDate(latestData.generatedAt))
+      for (const group of Object.values(settingForms)) {
+        group.state.textContent = '已同步'
+        setMessage(group.message, '', '')
+      }
+      setText('updated-at', `更新于 ${formatDate(latestData.generatedAt)}`)
     } catch (error) {
-      settingsState.textContent = '读取失败'
       if (error.message === 'admin_login_required') return showLogin()
-      setMessage(settingsMessage, error.message, 'error')
+      for (const group of Object.values(settingForms)) {
+        group.state.textContent = '读取失败'
+        setMessage(group.message, error.message, 'error')
+      }
+    }
+  }
+
+  async function saveSettings(name) {
+    const group = settingForms[name]
+    const payload = {}
+    for (const key of group.keys) {
+      const input = group.form.elements[key]
+      payload[key] = input.type === 'checkbox' ? input.checked : Number(input.value)
+    }
+    const button = group.form.querySelector('button[type="submit"]')
+    button.disabled = true
+    group.state.textContent = '保存中'
+    try {
+      await api('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(payload) })
+      setMessage(group.message, '设置已保存并立即生效。', 'success')
+      await refreshDashboard()
+    } catch (error) {
+      group.state.textContent = '保存失败'
+      setMessage(group.message, error.message, 'error')
+    } finally {
+      button.disabled = false
     }
   }
 
@@ -162,6 +231,7 @@
         body: JSON.stringify({ password }),
       })
       loginForm.reset()
+      setPage(location.hash.slice(1), false)
       await refreshDashboard()
     } catch (error) {
       const message = error.message === 'admin_auth_not_configured'
@@ -171,38 +241,23 @@
     }
   })
 
-  settingsForm.addEventListener('submit', async (event) => {
-    event.preventDefault()
-    saveButton.disabled = true
-    settingsState.textContent = '保存中'
-    const form = settingsForm.elements
-    const payload = {
-      downloadEnabled: form.downloadEnabled.checked,
-      parseEnabled: form.parseEnabled.checked,
-      qimaoEnabled: form.qimaoEnabled.checked,
-      fanqieEnabled: form.fanqieEnabled.checked,
-      rewardedAdEnabled: form.rewardedAdEnabled.checked,
-      cloudDirectLinkEnabled: form.cloudDirectLinkEnabled.checked,
-      downloadLimit: Number(form.downloadLimit.value),
-      rewardedAdEveryDownloads: Number(form.rewardedAdEveryDownloads.value),
-    }
-    try {
-      await api('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(payload) })
-      setMessage(settingsMessage, '配置已保存并立即生效。', 'success')
-      await refreshDashboard()
-    } catch (error) {
-      setMessage(settingsMessage, error.message, 'error')
-      settingsState.textContent = '保存失败'
-    } finally {
-      saveButton.disabled = false
-    }
-  })
+  for (const [name, group] of Object.entries(settingForms)) {
+    group.form.addEventListener('submit', (event) => {
+      event.preventDefault()
+      saveSettings(name)
+    })
+  }
 
+  for (const item of navItems) {
+    item.addEventListener('click', () => setPage(item.dataset.page))
+  }
+  window.addEventListener('hashchange', () => setPage(location.hash.slice(1), false))
   document.getElementById('refresh-button').addEventListener('click', refreshDashboard)
   document.getElementById('logout-button').addEventListener('click', async () => {
     try { await api('/api/admin/logout', { method: 'POST' }) } catch {}
     showLogin('已退出登录。')
   })
 
+  setPage(location.hash.slice(1), false)
   refreshDashboard()
 })()
