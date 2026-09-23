@@ -55,6 +55,15 @@ sudo docker run -itd --restart unless-stopped \
   ghcr.io/timshitpig/mantou-toolbox-backend:latest
 ```
 
+The GHCR package currently requires a registry login before the first pull:
+
+```sh
+echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u TimShitPig --password-stdin
+```
+
+After that login, the `docker run` command above is the only container start
+command needed.
+
 The equivalent executable wrappers are `docker-run.sh` and
 `docker-update.sh`. For a cloned repository, run `sudo ./docker-update.sh`
 after a new image is published. For a host that only needs the updater, run:
