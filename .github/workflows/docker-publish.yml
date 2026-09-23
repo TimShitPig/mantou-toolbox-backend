@@ -17,6 +17,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Check deployment script syntax
+        run: |
+          for script in docker-run.sh docker-update.sh deploy.sh update.sh; do
+            sh -n "$script"
+          done
+          sh test/docker-deploy.test.sh
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:

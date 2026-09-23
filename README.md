@@ -4,29 +4,15 @@
 
 ## 服务器一键部署
 
-服务器需要安装 Docker。先准备数据目录并进入部署目录：
+服务器需要先安装 Docker。执行下面一条命令即可部署：
 
 ```sh
-sudo mkdir -p /opt/mantou-toolbox/data /opt/mantou-toolbox/content
-cd /opt/mantou-toolbox
+sudo mkdir -p /opt/mantou-toolbox && cd /opt/mantou-toolbox && curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-run.sh | sudo sh
 ```
 
-创建服务器配置文件 `.env`：
+首次运行会自动创建 `.env`、数据目录和内容目录，自动生成随机 `APP_SECRET`，并探测服务器公网 IPv4 来设置 `APP_BASE_URL`。配置文件权限为仅 root 可读写。之后无需手工填写服务器 IP 或随机密钥。
 
-```sh
-sudo tee .env >/dev/null <<'EOF'
-NODE_ENV=production
-HOST=0.0.0.0
-PORT=8787
-APP_BASE_URL=http://YOUR_SERVER_IP:8787
-APP_SECRET=请替换为一段足够长的随机密钥
-ALLOW_DEVELOPMENT_LOGIN=true
-WECHAT_APP_ID=
-WECHAT_APP_SECRET=
-EOF
-```
-
-将 `YOUR_SERVER_IP` 替换为服务器公网 IP 或域名。配置好微信小程序凭据后，把 `ALLOW_DEVELOPMENT_LOGIN` 改为 `false`。
+微信 AppID 会从本项目配置自动写入。微信 AppSecret 由微信公众平台单独发放，不能自动生成；未配置时服务仍会部署并提供下载接口，微信资料登录保持关闭。需要登录时再将 AppSecret 写入 `/opt/mantou-toolbox/.env` 并重启容器。
 
 启动容器：
 
@@ -49,7 +35,7 @@ sudo docker ps
 curl http://127.0.0.1:8787/healthz
 ```
 
-服务器防火墙还需要放行 TCP `8787`。小程序正式环境应配置 HTTPS 域名和微信合法请求域名。
+服务器防火墙还需要放行 TCP `8787`。如果公网 IP 探测失败，脚本会使用本机回环地址并提示；此时将 `/opt/mantou-toolbox/.env` 中的 `APP_BASE_URL` 改成服务器公网 IP 或域名。小程序正式环境应配置 HTTPS 域名和微信合法请求域名。
 
 ## 一键更新
 
