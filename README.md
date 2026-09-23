@@ -11,15 +11,6 @@ sudo mkdir -p /opt/mantou-toolbox/data /opt/mantou-toolbox/content
 cd /opt/mantou-toolbox
 ```
 
-首次拉取 GHCR 镜像需要先登录。`GHCR_TOKEN` 需要有 `read:packages` 权限：
-
-```sh
-read -rsp "GHCR token: " GHCR_TOKEN
-echo
-echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u TimShitPig --password-stdin
-unset GHCR_TOKEN
-```
-
 创建服务器配置文件 `.env`：
 
 ```sh
@@ -96,7 +87,7 @@ GitHub Actions 会在 `main` 分支更新后构建并发布镜像：
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
 ```
 
-工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。当前 GHCR 包需要登录后才能拉取。
+工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。GHCR 镜像包为公开状态，无需执行 `docker login` 即可拉取。
 
 ## 本地开发
 
