@@ -39,6 +39,26 @@ The image is built from `node:24-bookworm-slim`; the backend has no npm runtime
 dependencies. `compose.yaml` also mounts `./content` read-only at `/app/content`
 for an optional `CONTENT_CATALOG_FILE` provider.
 
+For a direct `docker run` deployment, use the same shape as a single-container
+service:
+
+```sh
+sudo docker run -itd --restart unless-stopped \
+  -p 8787:8787 \
+  -v $PWD/data:/app/storage \
+  -v $PWD/content:/app/content:ro \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v /etc/timezone:/etc/timezone:ro \
+  -e APP_BASE_URL=http://YOUR_SERVER_IP:8787 \
+  -e APP_SECRET=REPLACE_WITH_A_LONG_SECRET \
+  --name mantou-toolbox \
+  ghcr.io/timshitpig/mantou-toolbox-backend:latest
+```
+
+The equivalent executable wrapper is `docker-run.sh`; run
+`./docker-update.sh` after a new image is published. It pulls the latest image,
+recreates only the container, and keeps `$PWD/data` intact.
+
 ## GitHub image and one-click updates
 
 `.github/workflows/docker-publish.yml` publishes `main` to GHCR as:
