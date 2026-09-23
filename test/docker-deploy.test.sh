@@ -9,11 +9,18 @@ mkdir -p "$TEMP_ROOT/bin" "$TEMP_ROOT/server"
 
 cat > "$TEMP_ROOT/bin/curl" <<'EOF'
 #!/usr/bin/env sh
-printf '%s\n' '198.51.100.27'
+case "$*" in
+  *api.github.com*) printf '%s\n' '{"sha":"0123456789abcdef0123456789abcdef01234567"}' ;;
+  *) printf '%s\n' '198.51.100.27' ;;
+esac
 EOF
 
 cat > "$TEMP_ROOT/bin/docker" <<'EOF'
 #!/usr/bin/env sh
+if [ "$1" = 'inspect' ]; then
+  printf '%s\n' "${MOCK_CURRENT_REVISION:-}"
+  exit 0
+fi
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
 EOF
 
@@ -51,22 +58,35 @@ grep -Fq -- '--env-file '"$ENV_FILE" "$TEMP_ROOT/docker-calls"
 BEFORE="$(sha256sum "$ENV_FILE" | cut -d' ' -f1)"
 (
   cd "$TEMP_ROOT/server"
-  PATH="$TEMP_ROOT/bin:$PATH" \
+    PATH="$TEMP_ROOT/bin:$PATH" \
     DOCKER_CALLS="$TEMP_ROOT/docker-calls-update" \
+    MOCK_CURRENT_REVISION=0123456789abcdef0123456789abcdef01234567 \
     sh "$ROOT/docker-update.sh"
 )
 AFTER="$(sha256sum "$ENV_FILE" | cut -d' ' -f1)"
 [ "$BEFORE" = "$AFTER" ]
-grep -Fq -- '-p 6185:8787' "$TEMP_ROOT/docker-calls-update"
-grep -Fq -- "--user ${EXPECTED_UID}:${EXPECTED_GID}" "$TEMP_ROOT/docker-calls-update"
+[ ! -s "$TEMP_ROOT/docker-calls-update" ]
+
+(
+  cd "$TEMP_ROOT/server"
+  PATH="$TEMP_ROOT/bin:$PATH" \
+    DOCKER_CALLS="$TEMP_ROOT/docker-calls-forced" \
+    MOCK_CURRENT_REVISION=0123456789abcdef0123456789abcdef01234567 \
+    FORCE_UPDATE=true \
+    sh "$ROOT/docker-update.sh"
+)
+grep -Fq 'pull ghcr.io/timshitpig/mantou-toolbox-backend:latest' "$TEMP_ROOT/docker-calls-forced"
+grep -Fq -- '-p 6185:8787' "$TEMP_ROOT/docker-calls-forced"
+grep -Fq -- "--user ${EXPECTED_UID}:${EXPECTED_GID}" "$TEMP_ROOT/docker-calls-forced"
 
 mkdir -p "$TEMP_ROOT/legacy"
 sed '/^ADMIN_PASSWORD=/d' "$ENV_FILE" > "$TEMP_ROOT/legacy/.env"
 OLD_SECRET="$(sed -n 's/^APP_SECRET=//p' "$TEMP_ROOT/legacy/.env")"
 (
   cd "$TEMP_ROOT/legacy"
-  PATH="$TEMP_ROOT/bin:$PATH" \
+    PATH="$TEMP_ROOT/bin:$PATH" \
     DOCKER_CALLS="$TEMP_ROOT/docker-calls-legacy" \
+    MOCK_CURRENT_REVISION= \
     sh "$ROOT/docker-update.sh"
 )
 MIGRATED_ADMIN_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' "$TEMP_ROOT/legacy/.env")"

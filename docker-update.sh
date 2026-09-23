@@ -3,6 +3,7 @@ set -eu
 
 IMAGE="${IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}"
 NAME="${NAME:-mantou-toolbox}"
+FORCE_UPDATE="${FORCE_UPDATE:-false}"
 PUBLIC_PORT="${PUBLIC_PORT:-${PORT:-}}"
 if [ -z "$PUBLIC_PORT" ] && [ -f "$PWD/.env" ]; then
   PUBLIC_PORT="$(sed -n 's/^PUBLIC_PORT=//p' "$PWD/.env" | tail -n 1)"
@@ -81,6 +82,16 @@ fi
 SAVED_APP_BASE_URL="$(sed -n 's/^APP_BASE_URL=//p' "$PWD/.env" | tail -n 1)"
 printf 'Admin UI: %s/admin\n' "${SAVED_APP_BASE_URL:-http://127.0.0.1:${PUBLIC_PORT}}"
 printf 'Admin password is stored in %s/.env (read with: sudo grep ^ADMIN_PASSWORD= %s/.env)\n' "$PWD" "$PWD"
+
+if [ "$FORCE_UPDATE" != 'true' ]; then
+  CURRENT_REVISION="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$NAME" 2>/dev/null || true)"
+  LATEST_RESPONSE="$(curl -fsS --connect-timeout 5 --max-time 10 https://api.github.com/repos/TimShitPig/mantou-toolbox-backend/commits/main 2>/dev/null || true)"
+  LATEST_REVISION="$(printf '%s\n' "$LATEST_RESPONSE" | sed -n 's/^[[:space:]]*"sha":[[:space:]]*"\([0-9a-f]*\)".*/\1/p' | head -n 1)"
+  if [ "${#CURRENT_REVISION}" -eq 40 ] && [ "$CURRENT_REVISION" = "$LATEST_REVISION" ]; then
+    printf 'Already up to date (%s); no image pull needed.\n' "$CURRENT_REVISION"
+    exit 0
+  fi
+fi
 
 docker pull "$IMAGE"
 docker rm -f "$NAME" >/dev/null 2>&1 || true

@@ -37,11 +37,17 @@ curl http://127.0.0.1:8787/healthz
 
 ## 一键更新
 
-在原部署目录执行以下命令。更新脚本会拉取新镜像并重建容器，继续使用当前目录下的 `.env` 和 `data` 数据：
+在原部署目录执行以下命令。更新脚本会比较运行容器的代码版本与 GitHub 最新版本；版本未变化时直接退出，不拉镜像也不重启容器。发现新版本后才拉取镜像并重建容器，`.env` 和 `data` 会保留：
 
 ```sh
 cd /opt/mantou-toolbox
 curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh | sudo sh
+```
+
+需要强制重拉并重建时，设置 `FORCE_UPDATE=true`：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh | sudo env FORCE_UPDATE=true sh
 ```
 
 也可以克隆仓库后使用：
