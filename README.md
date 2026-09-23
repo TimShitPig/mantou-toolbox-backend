@@ -1,175 +1,146 @@
-# Mantou Toolbox Backend
+# 馒头工具箱后端
 
-This directory contains a zero-dependency Node 24 backend that preserves the
-existing mini-program API paths, including their `.php` suffixes. It uses the
-native `node:http` and `node:sqlite` modules, so no package installation is
-needed.
+为馒头工具箱小程序提供登录、用户资料、小说链接解析与下载接口。后端使用 Node.js 24 和内置 SQLite，无第三方运行时依赖，并兼容前端现有的 `.php` 接口路径。
 
-## Docker one-click deployment
+## 服务器一键部署
 
-Docker Desktop must be running. Copy the Docker environment file and start the
-service with one command:
+服务器需要安装 Docker。先准备数据目录并进入部署目录：
 
-```powershell
-Copy-Item .env.docker.example .env
-docker compose up -d --build
+```sh
+sudo mkdir -p /opt/mantou-toolbox/data /opt/mantou-toolbox/content
+cd /opt/mantou-toolbox
 ```
 
-On Windows, `deploy.ps1` performs the environment-file copy and the same
-Compose startup in one step:
+首次拉取 GHCR 镜像需要先登录。`GHCR_TOKEN` 需要有 `read:packages` 权限：
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\deploy.ps1
+```sh
+read -rsp "GHCR token: " GHCR_TOKEN
+echo
+echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u TimShitPig --password-stdin
+unset GHCR_TOKEN
 ```
 
-The API is then available at `http://127.0.0.1:8787`. Check the container and
-health endpoint with:
+创建服务器配置文件 `.env`：
 
-```powershell
-docker compose ps
-curl http://127.0.0.1:8787/healthz
+```sh
+sudo tee .env >/dev/null <<'EOF'
+NODE_ENV=production
+HOST=0.0.0.0
+PORT=8787
+APP_BASE_URL=http://YOUR_SERVER_IP:8787
+APP_SECRET=请替换为一段足够长的随机密钥
+ALLOW_DEVELOPMENT_LOGIN=true
+WECHAT_APP_ID=
+WECHAT_APP_SECRET=
+EOF
 ```
 
-Stop it with `docker compose down`. Persistent SQLite data, avatars, and
-generated files live in the named `mantou-storage` volume. Set `PUBLIC_PORT`
-and `APP_BASE_URL` in `.env` when exposing a different port or public domain.
+将 `YOUR_SERVER_IP` 替换为服务器公网 IP 或域名。配置好微信小程序凭据后，把 `ALLOW_DEVELOPMENT_LOGIN` 改为 `false`。
 
-The image is built from `node:24-bookworm-slim`; the backend has no npm runtime
-dependencies. `compose.yaml` also mounts `./content` read-only at `/app/content`
-for an optional `CONTENT_CATALOG_FILE` provider.
-
-For a direct `docker run` deployment, use the same shape as a single-container
-service:
+启动容器：
 
 ```sh
 sudo docker run -itd --restart unless-stopped \
+  --env-file "$PWD/.env" \
   -p 8787:8787 \
-  -v $PWD/data:/app/storage \
-  -v $PWD/content:/app/content:ro \
+  -v "$PWD/data:/app/storage" \
+  -v "$PWD/content:/app/content:ro" \
   -v /etc/localtime:/etc/localtime:ro \
   -v /etc/timezone:/etc/timezone:ro \
-  -e APP_BASE_URL=http://YOUR_SERVER_IP:8787 \
-  -e APP_SECRET=REPLACE_WITH_A_LONG_SECRET \
   --name mantou-toolbox \
   ghcr.io/timshitpig/mantou-toolbox-backend:latest
 ```
 
-The GHCR package currently requires a registry login before the first pull:
+检查服务：
 
 ```sh
-echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u TimShitPig --password-stdin
+sudo docker ps
+curl http://127.0.0.1:8787/healthz
 ```
 
-After that login, the `docker run` command above is the only container start
-command needed.
+服务器防火墙还需要放行 TCP `8787`。小程序正式环境应配置 HTTPS 域名和微信合法请求域名。
 
-The equivalent executable wrappers are `docker-run.sh` and
-`docker-update.sh`. For a cloned repository, run `sudo ./docker-update.sh`
-after a new image is published. Put production variables such as
-`WECHAT_APP_ID` and `WECHAT_APP_SECRET` in `$PWD/.env`; both wrappers reuse that
-file on every recreate. For a host that only needs the updater, run:
+## 一键更新
+
+在原部署目录执行以下命令。更新脚本会拉取新镜像并重建容器，继续使用当前目录下的 `.env` 和 `data` 数据：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh \
-  | sudo env IMAGE=ghcr.io/timshitpig/mantou-toolbox-backend:latest \
-      APP_BASE_URL=http://YOUR_SERVER_IP:8787 \
-      APP_SECRET=REPLACE_WITH_A_LONG_SECRET sh
+cd /opt/mantou-toolbox
+curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh | sudo sh
 ```
 
-It pulls the latest image, recreates only the container, and keeps `$PWD/data`
-intact.
+也可以克隆仓库后使用：
 
-## GitHub image and one-click updates
+```sh
+sudo ./docker-update.sh
+```
 
-`.github/workflows/docker-publish.yml` publishes `main` to GHCR as:
+## Docker Compose 部署
+
+克隆仓库后复制配置样例，再启动服务：
+
+```sh
+git clone https://github.com/TimShitPig/mantou-toolbox-backend.git
+cd mantou-toolbox-backend
+cp .env.docker.example .env
+docker compose up -d --build
+```
+
+Windows 可运行 `deploy.ps1`；Linux/macOS 可运行 `./deploy.sh`。Compose 会将数据库、头像和生成文件保存在 `mantou-storage` 命名卷中。
+
+## 自动发布镜像
+
+GitHub Actions 会在 `main` 分支更新后构建并发布镜像：
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
 ```
 
-On a deployment host, clone this repository once, set `BACKEND_IMAGE` in `.env`
-to that image, then run `deploy.sh` (Linux) or `deploy.ps1` (Windows). Future
-updates are one command after a GitHub push:
+工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。当前 GHCR 包需要登录后才能拉取。
 
-```sh
-./update.sh
-```
+## 本地开发
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\update.ps1
-```
-
-The update script performs `git pull --ff-only`, pulls the new GHCR image, and
-recreates the container without deleting the `mantou-storage` volume. Without
-`BACKEND_IMAGE`, it pulls source changes and rebuilds locally instead.
-
-## Run locally
+需要 Node.js 24 或更高版本：
 
 ```powershell
 Copy-Item .env.example .env
 npm start
-```
-
-The default URL is `http://127.0.0.1:8787`, which is also the frontend default
-for the mini-program developer tool. A deployed service can be selected without
-rebuilding by writing its HTTPS URL through the existing
-`setBackendBaseUrl()` helper; stored URLs take precedence over the default.
-
-```powershell
 npm test
 ```
 
-The service creates `storage/mantou.sqlite`, `storage/avatars`, and
-`storage/downloads` on first start. These files are intentionally ignored.
+默认地址为 `http://127.0.0.1:8787`。首次启动会创建 `storage/mantou.sqlite`、`storage/avatars` 和 `storage/downloads`。
 
-## API surface
+## 接口
 
-The service implements these existing client routes:
+- 认证与资料：`/api/v1/auth/login.php`、`/api/v1/auth/me.php`、`/api/v1/auth/profile.php`
+- 头像与客户端日志：`/api/v1/upload/avatar.php`、`/api/v1/logs/client.php`
+- 小说下载：`/api/download/status.php`、`parse.php`、`generate.php`、`progress.php`
+- 文件与图片：`/api/download/file.php`、`/api/download/image_proxy.php`
+- 健康检查：`/healthz`
 
-- `/api/v1/auth/login.php`, `/me.php`, `/profile.php`
-- `/api/v1/upload/avatar.php`, `/api/v1/logs/client.php`
-- `/api/download/status.php`, `/parse.php`, `/generate.php`, `/progress.php`
-- `/api/download/file.php`, `/api/download/image_proxy.php`
-- `/healthz`
+认证接口使用短期签名 Bearer Token。用户资料和头像接口要求登录；下载接口支持匿名请求，与现有前端行为一致。
 
-Authentication uses signed short-lived bearer tokens. Profile and avatar
-routes require a token. Download routes work anonymously as the current
-frontend permits anonymous download requests.
+## 内容来源配置
 
-## Content providers
+解析接口可识别七猫和番茄链接。设置 `REMOTE_METADATA_ENABLED=true` 后会尝试请求平台元数据；平台响应可能随时变化。
 
-`parse.php` recognizes Qimao and Fanqie links and returns a normalized book
-record. Remote metadata can be enabled with `REMOTE_METADATA_ENABLED=true`.
+下载生成接口会创建后台任务。需要生成正文时，可以配置本地授权内容目录 `CONTENT_CATALOG_FILE`，或配置返回正文的 `CONTENT_PROVIDER_URL`。
 
-`generate.php` creates a background job. For actual book text, configure one
-of the following sources:
-
-1. `CONTENT_CATALOG_FILE`: a local JSON array with records such as:
+本地 JSON 内容目录示例：
 
 ```json
 [
   {
     "source": "qimao",
     "sourceBookId": "123",
-    "title": "Example",
-    "content": "Authorized text goes here."
+    "title": "示例书名",
+    "content": "已授权的正文内容。"
   }
 ]
 ```
 
-2. `CONTENT_PROVIDER_URL`: an HTTP endpoint that receives the requested book
-and returns either `{ "text": "..." }` or
-`{ "chapters": [{ "title": "Chapter 1", "content": "..." }] }`.
+内容提供接口接收书籍信息，并返回 `{ "text": "..." }` 或 `{ "chapters": [{ "title": "第一章", "content": "..." }] }`。未配置内容来源时，后端会生成包含书籍资料和来源链接的说明文件，便于验证下载链路。
 
-Without a configured content record, local development produces a clearly
-marked source-metadata export. This keeps the full client task flow testable
-while an external content provider is being connected.
+## 生产配置
 
-## Production deployment
-
-Set `NODE_ENV=production`, a long random `APP_SECRET`,
-`ALLOW_DEVELOPMENT_LOGIN=false`, a public HTTPS `APP_BASE_URL`, and the WeChat
-credentials before deploying. The mini program must also allow the deployed
-HTTPS domain in its request-domain configuration.
+生产环境请设置强随机 `APP_SECRET`、公网 HTTPS `APP_BASE_URL`、微信 `WECHAT_APP_ID` 和 `WECHAT_APP_SECRET`，并将 `ALLOW_DEVELOPMENT_LOGIN=false`。HTTPS 域名还需要配置到微信小程序的合法请求域名中。
