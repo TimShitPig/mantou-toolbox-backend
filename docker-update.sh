@@ -10,14 +10,27 @@ APP_SECRET="${APP_SECRET:-change-this-secret-before-production}"
 mkdir -p "$PWD/data" "$PWD/content"
 docker pull "$IMAGE"
 docker rm -f "$NAME" >/dev/null 2>&1 || true
-docker run -itd \
-  --restart unless-stopped \
-  -p "${PORT}:8787" \
-  -v "$PWD/data:/app/storage" \
-  -v "$PWD/content:/app/content:ro" \
-  -v /etc/localtime:/etc/localtime:ro \
-  -v /etc/timezone:/etc/timezone:ro \
-  -e "APP_BASE_URL=${APP_BASE_URL}" \
-  -e "APP_SECRET=${APP_SECRET}" \
-  --name "$NAME" \
-  "$IMAGE"
+if [ -f "$PWD/.env" ]; then
+  docker run -itd \
+    --restart unless-stopped \
+    -p "${PORT}:8787" \
+    -v "$PWD/data:/app/storage" \
+    -v "$PWD/content:/app/content:ro" \
+    -v /etc/localtime:/etc/localtime:ro \
+    -v /etc/timezone:/etc/timezone:ro \
+    --env-file "$PWD/.env" \
+    --name "$NAME" \
+    "$IMAGE"
+else
+  docker run -itd \
+    --restart unless-stopped \
+    -p "${PORT}:8787" \
+    -v "$PWD/data:/app/storage" \
+    -v "$PWD/content:/app/content:ro" \
+    -v /etc/localtime:/etc/localtime:ro \
+    -v /etc/timezone:/etc/timezone:ro \
+    -e "APP_BASE_URL=${APP_BASE_URL}" \
+    -e "APP_SECRET=${APP_SECRET}" \
+    --name "$NAME" \
+    "$IMAGE"
+fi

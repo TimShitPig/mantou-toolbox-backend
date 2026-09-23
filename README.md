@@ -66,7 +66,9 @@ command needed.
 
 The equivalent executable wrappers are `docker-run.sh` and
 `docker-update.sh`. For a cloned repository, run `sudo ./docker-update.sh`
-after a new image is published. For a host that only needs the updater, run:
+after a new image is published. Put production variables such as
+`WECHAT_APP_ID` and `WECHAT_APP_SECRET` in `$PWD/.env`; both wrappers reuse that
+file on every recreate. For a host that only needs the updater, run:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh \
