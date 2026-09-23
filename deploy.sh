@@ -3,6 +3,12 @@ set -eu
 
 cd "$(dirname "$0")"
 
+if command -v git >/dev/null 2>&1 \
+  && [ "$(git status --porcelain 2>/dev/null || printf 'unknown')" = '' ]; then
+  APP_BUILD_REVISION="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
+  export APP_BUILD_REVISION
+fi
+
 if [ ! -f .env ]; then
   cp .env.docker.example .env
   printf '%s\n' 'Created .env from .env.docker.example. Review APP_SECRET before production use.'

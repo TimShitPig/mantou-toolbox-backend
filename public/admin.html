@@ -32,6 +32,7 @@
       </div>
       <div class="top-actions">
         <span id="updated-at" class="updated-at">尚未刷新</span>
+        <button id="update-button" class="button button-secondary" type="button">更新</button>
         <button id="refresh-button" class="button button-secondary" type="button">刷新</button>
         <button id="logout-button" class="button button-quiet" type="button">退出</button>
       </div>
@@ -186,6 +187,34 @@
         </section>
       </main>
     </div>
+
+    <dialog id="update-dialog" class="update-dialog" aria-labelledby="update-dialog-title">
+      <div class="update-dialog-content">
+        <div class="update-dialog-heading">
+          <div><p class="eyebrow">VERSIONS</p><h2 id="update-dialog-title">更新管理</h2></div>
+          <button id="update-close-button" class="button button-quiet" type="button">关闭</button>
+        </div>
+        <p id="update-status" class="update-status" role="status" aria-live="polite">正在检查版本…</p>
+        <div class="version-summary">
+          <div><span>当前版本</span><strong id="current-revision">--</strong></div>
+          <div><span>最新可用</span><strong id="latest-revision">--</strong></div>
+          <p id="latest-message" class="version-message"></p>
+        </div>
+        <div class="update-primary-action">
+          <button id="copy-update-button" class="button button-primary" type="button" disabled>复制更新命令</button>
+        </div>
+        <div class="rollback-action">
+          <label class="field-label" for="rollback-version">回退版本</label>
+          <div class="rollback-controls">
+            <select id="rollback-version" class="version-select" disabled>
+              <option value="">暂无可用版本</option>
+            </select>
+            <button id="copy-rollback-button" class="button button-secondary" type="button" disabled>复制回退命令</button>
+          </div>
+        </div>
+        <p id="update-action-message" class="update-action-message form-message" role="status" aria-live="polite"></p>
+      </div>
+    </dialog>
   </div>
 </body>
 </html>

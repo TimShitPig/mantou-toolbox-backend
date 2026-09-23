@@ -55,5 +55,6 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          build-args: APP_BUILD_REVISION=${{ github.sha }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

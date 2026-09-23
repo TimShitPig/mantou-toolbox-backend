@@ -1,11 +1,14 @@
 FROM node:24-bookworm-slim
 
+ARG APP_BUILD_REVISION=unknown
+
 WORKDIR /app
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8787 \
-    APP_BASE_URL=http://127.0.0.1:8787
+    APP_BASE_URL=http://127.0.0.1:8787 \
+    APP_BUILD_REVISION=${APP_BUILD_REVISION}
 
 # The backend has no third-party runtime dependencies. Copy only deployable code.
 COPY package.json ./

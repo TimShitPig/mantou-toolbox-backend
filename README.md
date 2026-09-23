@@ -26,6 +26,8 @@ sudo grep '^ADMIN_PASSWORD=' /opt/mantou-toolbox/.env
 
 管理会话有效期为 8 小时。正式使用请通过 HTTPS 反向代理访问后台。
 
+后台顶部的“更新”会检查当前镜像与最近成功构建的版本，并提供最新版和最多 3 个较早版本的更新/回退命令。复制后在服务器的 `/opt/mantou-toolbox` 目录执行，原 `.env` 和 `data` 会保留。
+
 检查服务：
 
 ```sh

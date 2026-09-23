@@ -53,6 +53,7 @@ function createConfig(env = process.env, overrides = {}) {
     avatarDir: path.resolve(env.AVATAR_DIR || path.join(storageDir, 'avatars')),
     downloadDir: path.resolve(env.DOWNLOAD_DIR || path.join(storageDir, 'downloads')),
     appBaseUrl,
+    appBuildRevision: String(env.APP_BUILD_REVISION || 'unknown').trim().toLowerCase(),
     appSecret: String(env.APP_SECRET || 'development-only-change-me').trim(),
     adminPassword: String(env.ADMIN_PASSWORD || '').trim(),
     corsAllowOrigin: String(env.CORS_ALLOW_ORIGIN || '*').trim(),

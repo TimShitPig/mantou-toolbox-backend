@@ -34,6 +34,8 @@ const {
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 const MAX_PROXY_BYTES = 5 * 1024 * 1024
+const UPDATE_REPOSITORY = 'TimShitPig/mantou-toolbox-backend'
+const UPDATE_CACHE_MS = 60 * 1000
 
 function assertMethod(req, expected) {
   if (req.method !== expected) {
@@ -213,8 +215,11 @@ function createApp(options = {}) {
   const config = options.config || createConfig(options.env)
   const store = options.store || createDatabase(config.databasePath)
   const auth = options.auth || createAuth(store, config, options.fetchImpl)
+  const updateFetch = options.updateFetchImpl || options.fetchImpl || globalThis.fetch
   let server = null
   let closed = false
+  let updateCache = null
+  let updateCacheAt = 0
 
   function getRuntimeConfig() {
     return { ...config, ...store.getAdminSettings() }
@@ -285,6 +290,73 @@ function createApp(options = {}) {
         generatedAt: Date.now(),
       },
     }, origin)
+  }
+
+  async function handleAdminUpdates(req, res, origin) {
+    assertMethod(req, 'GET')
+    requireAdminSession(req)
+
+    if (!updateCache || Date.now() - updateCacheAt >= UPDATE_CACHE_MS) {
+      const headers = {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'mantou-toolbox-update-check',
+      }
+      const options = { headers, signal: AbortSignal.timeout(8000) }
+      let commitsResponse
+      let runsResponse
+      try {
+        [commitsResponse, runsResponse] = await Promise.all([
+          updateFetch(`https://api.github.com/repos/${UPDATE_REPOSITORY}/commits?per_page=100`, options),
+          updateFetch(`https://api.github.com/repos/${UPDATE_REPOSITORY}/actions/runs?branch=main&per_page=100`, options),
+        ])
+      } catch {
+        throw new ApiError(502, 'update_check_failed')
+      }
+      if (!commitsResponse.ok || !runsResponse.ok) {
+        throw new ApiError(502, 'update_check_failed')
+      }
+
+      let commits
+      let runs
+      try {
+        ;[commits, runs] = await Promise.all([commitsResponse.json(), runsResponse.json()])
+      } catch {
+        throw new ApiError(502, 'update_check_failed')
+      }
+      if (!Array.isArray(commits) || !Array.isArray(runs.workflow_runs)) {
+        throw new ApiError(502, 'update_check_failed')
+      }
+
+      const publishedRevisions = new Set(runs.workflow_runs
+        .filter((run) => run.name === 'Publish Docker image'
+          && run.head_branch === 'main'
+          && run.status === 'completed'
+          && run.conclusion === 'success')
+        .map((run) => String(run.head_sha || '').toLowerCase()))
+      const versions = commits
+        .filter((commit) => /^[a-f0-9]{40}$/i.test(String(commit.sha || ''))
+          && publishedRevisions.has(String(commit.sha).toLowerCase()))
+        .map((commit) => ({
+          revision: String(commit.sha).toLowerCase(),
+          shortRevision: String(commit.sha).slice(0, 7).toLowerCase(),
+          message: String(commit.commit && commit.commit.message || '').split(/\r?\n/, 1)[0].slice(0, 120),
+          publishedAt: String(commit.commit && commit.commit.author && commit.commit.author.date || ''),
+        }))
+      const currentRevision = /^[a-f0-9]{40}$/i.test(config.appBuildRevision)
+        ? config.appBuildRevision
+        : null
+      const currentIndex = versions.findIndex((version) => version.revision === currentRevision)
+      const latest = versions[0] || null
+      updateCache = {
+        currentRevision,
+        latest,
+        hasUpdate: Boolean(latest && latest.revision !== currentRevision),
+        rollbackVersions: currentIndex < 0 ? [] : versions.slice(currentIndex + 1, currentIndex + 4),
+      }
+      updateCacheAt = Date.now()
+    }
+
+    sendJson(res, config, 200, { data: updateCache }, origin)
   }
 
   async function handleAdminSettings(req, res, origin) {
@@ -625,6 +697,7 @@ function createApp(options = {}) {
       if (pathname === '/api/admin/login') return await handleAdminLogin(req, res, origin)
       if (pathname === '/api/admin/logout') return await handleAdminLogout(req, res, origin)
       if (pathname === '/api/admin/summary') return await handleAdminSummary(req, res, origin)
+      if (pathname === '/api/admin/updates') return await handleAdminUpdates(req, res, origin)
       if (pathname === '/api/admin/settings') return await handleAdminSettings(req, res, origin)
       if (pathname === '/healthz') {
         assertMethod(req, 'GET')

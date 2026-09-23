@@ -5,6 +5,8 @@
   const loginForm = document.getElementById('login-form')
   const loginMessage = document.getElementById('login-message')
   const navItems = [...document.querySelectorAll('.nav-item')]
+  const updateDialog = document.getElementById('update-dialog')
+  let updateInfo = null
   let latestData = null
 
   const settingForms = {
@@ -221,6 +223,98 @@
     }
   }
 
+  function renderUpdateInfo(info) {
+    updateInfo = info
+    const latest = info.latest
+    setText('current-revision', info.currentRevision ? info.currentRevision.slice(0, 7) : '本地构建')
+    setText('latest-revision', latest ? latest.shortRevision : '暂无')
+    setText('latest-message', latest ? latest.message : '')
+    setText('update-status', latest
+      ? (info.hasUpdate ? '发现可用更新' : '当前已是最新版本')
+      : '暂无已发布的镜像版本')
+    document.getElementById('copy-update-button').disabled = !latest || !info.hasUpdate
+
+    const select = document.getElementById('rollback-version')
+    select.replaceChildren()
+    for (const version of info.rollbackVersions) {
+      const option = document.createElement('option')
+      option.value = version.revision
+      option.textContent = `${version.shortRevision} · ${formatDate(version.publishedAt)}`
+      select.appendChild(option)
+    }
+    if (!info.rollbackVersions.length) {
+      const option = document.createElement('option')
+      option.value = ''
+      option.textContent = '暂无可回退版本'
+      select.appendChild(option)
+    }
+    select.disabled = info.rollbackVersions.length === 0
+    document.getElementById('copy-rollback-button').disabled = info.rollbackVersions.length === 0
+    setMessage(document.getElementById('update-action-message'), '', '')
+  }
+
+  async function copyText(value) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value)
+        return true
+      }
+    } catch {}
+
+    const input = document.createElement('textarea')
+    input.value = value
+    input.setAttribute('readonly', '')
+    input.style.position = 'fixed'
+    input.style.opacity = '0'
+    document.body.appendChild(input)
+    input.select()
+    let copied = false
+    try { copied = document.execCommand('copy') } catch {}
+    input.remove()
+    return copied
+  }
+
+  function updateCommand(revision) {
+    const image = `ghcr.io/timshitpig/mantou-toolbox-backend:sha-${revision.slice(0, 7)}`
+    return `cd /opt/mantou-toolbox && curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh | sudo env FORCE_UPDATE=true IMAGE=${image} sh`
+  }
+
+  async function copySelectedCommand(revision) {
+    const message = document.getElementById('update-action-message')
+    if (!/^[a-f0-9]{40}$/.test(revision || '')) {
+      setMessage(message, '版本信息无效。', 'error')
+      return
+    }
+    const copied = await copyText(updateCommand(revision))
+    setMessage(message, copied ? '服务器命令已复制。' : '复制失败，请重试。', copied ? 'success' : 'error')
+  }
+
+  async function openUpdateDialog() {
+    updateDialog.showModal()
+    updateInfo = null
+    setText('update-status', '正在检查版本…')
+    setText('current-revision', '--')
+    setText('latest-revision', '--')
+    setText('latest-message', '')
+    setMessage(document.getElementById('update-action-message'), '', '')
+    document.getElementById('copy-update-button').disabled = true
+    document.getElementById('copy-rollback-button').disabled = true
+    const select = document.getElementById('rollback-version')
+    select.replaceChildren()
+    select.add(new Option('读取中…', ''))
+    select.disabled = true
+    try {
+      renderUpdateInfo(await api('/api/admin/updates'))
+    } catch (error) {
+      setText('update-status', error.message === 'admin_login_required' ? '登录状态已过期' : '版本检查失败')
+      const message = error.message === 'update_check_failed'
+        ? '读取 GitHub 版本信息失败，请稍后重试。'
+        : (error.message === 'admin_login_required' ? '登录状态已过期，请重新登录。' : error.message)
+      select.replaceChildren(new Option('暂无可回退版本', ''))
+      setMessage(document.getElementById('update-action-message'), message, 'error')
+    }
+  }
+
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault()
     setMessage(loginMessage, '正在验证…', '')
@@ -252,6 +346,17 @@
     item.addEventListener('click', () => setPage(item.dataset.page))
   }
   window.addEventListener('hashchange', () => setPage(location.hash.slice(1), false))
+  document.getElementById('update-button').addEventListener('click', openUpdateDialog)
+  document.getElementById('update-close-button').addEventListener('click', () => updateDialog.close())
+  updateDialog.addEventListener('click', (event) => {
+    if (event.target === updateDialog) updateDialog.close()
+  })
+  document.getElementById('copy-update-button').addEventListener('click', () => {
+    if (updateInfo && updateInfo.latest) copySelectedCommand(updateInfo.latest.revision)
+  })
+  document.getElementById('copy-rollback-button').addEventListener('click', () => {
+    copySelectedCommand(document.getElementById('rollback-version').value)
+  })
   document.getElementById('refresh-button').addEventListener('click', refreshDashboard)
   document.getElementById('logout-button').addEventListener('click', async () => {
     try { await api('/api/admin/logout', { method: 'POST' }) } catch {}

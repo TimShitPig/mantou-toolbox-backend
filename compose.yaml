@@ -6,6 +6,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        APP_BUILD_REVISION: "${APP_BUILD_REVISION:-unknown}"
     restart: unless-stopped
     init: true
     ports:

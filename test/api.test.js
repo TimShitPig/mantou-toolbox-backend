@@ -73,6 +73,22 @@ async function waitForCompletedJob(baseUrl, downloadId, token) {
 test('HTTP API workflow starts a real server and persists local state', async () => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mantou-api-test-'))
   const storageDir = path.join(temporaryRoot, 'storage')
+  const currentRevision = 'c'.repeat(40)
+  const revisions = ['a', 'b', 'c', 'd', 'e', 'f', '1'].map((character) => character.repeat(40))
+  const commits = revisions.map((sha, index) => ({
+    sha,
+    commit: {
+      message: `Release ${index}`,
+      author: { date: `2026-09-${String(23 - index).padStart(2, '0')}T00:00:00Z` },
+    },
+  }))
+  const workflowRuns = revisions.map((sha, index) => ({
+    name: 'Publish Docker image',
+    head_branch: 'main',
+    head_sha: sha,
+    status: 'completed',
+    conclusion: index === 3 ? 'failure' : 'success',
+  }))
   const config = createConfig({}, {
     host: '127.0.0.1',
     port: 0,
@@ -83,9 +99,18 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     downloadDir: path.join(storageDir, 'downloads'),
     appSecret: 'test',
     adminPassword: 'integration-admin-password',
+    appBuildRevision: currentRevision,
     allowDevelopmentLogin: true,
   })
-  const app = createApp({ config })
+  const app = createApp({
+    config,
+    updateFetchImpl: async (url) => ({
+      ok: true,
+      json: async () => String(url).includes('/actions/runs?')
+        ? { workflow_runs: workflowRuns }
+        : commits,
+    }),
+  })
 
   try {
     await app.listen()
@@ -100,12 +125,16 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     const adminMarkup = await adminPage.text()
     assert.match(adminMarkup, /馒头工具箱/)
     assert.match(adminMarkup, /aria-label="后台导航"/)
+    assert.match(adminMarkup, /id="update-button"/)
+    assert.match(adminMarkup, /id="update-dialog"/)
     for (const page of ['novel', 'logs', 'data', 'ads', 'status']) {
       assert.match(adminMarkup, new RegExp(`data-page="${page}"`))
       assert.match(adminMarkup, new RegExp(`id="page-${page}"`))
     }
     const anonymousAdmin = await requestJson(baseUrl, '/api/admin/summary')
     assert.equal(anonymousAdmin.response.status, 401)
+    const anonymousUpdateCheck = await requestJson(baseUrl, '/api/admin/updates')
+    assert.equal(anonymousUpdateCheck.response.status, 401)
 
     const unauthenticatedProfile = await requestJson(baseUrl, '/api/v1/auth/profile.php')
     assert.equal(unauthenticatedProfile.response.status, 401)
@@ -264,6 +293,18 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(adminSummary.payload.data.metrics.jobs_completed_today, 1)
     assert.equal(adminSummary.payload.data.settings.downloadEnabled, true)
     assert.equal(adminSummary.payload.data.jobs[0].title, 'Integration Book')
+
+    const updateInfo = await requestJson(baseUrl, '/api/admin/updates', {
+      headers: { Cookie: adminCookie },
+    })
+    assert.equal(updateInfo.response.status, 200)
+    assert.equal(updateInfo.payload.data.currentRevision, currentRevision)
+    assert.equal(updateInfo.payload.data.latest.revision, revisions[0])
+    assert.equal(updateInfo.payload.data.hasUpdate, true)
+    assert.deepEqual(
+      updateInfo.payload.data.rollbackVersions.map((version) => version.revision),
+      [revisions[4], revisions[5], revisions[6]]
+    )
 
     const updateSettings = await requestJson(
       baseUrl,
