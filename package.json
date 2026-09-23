@@ -1,0 +1,15 @@
+{
+  "name": "mantou-toolbox-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Zero-dependency Node backend for the Mantou Toolbox mini program.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings --env-file-if-exists=.env server.js",
+    "dev": "node --no-warnings --watch --env-file-if-exists=.env server.js",
+    "test": "node --no-warnings --test"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

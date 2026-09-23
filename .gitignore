@@ -1,0 +1,5 @@
+.env
+storage/
+coverage/
+content/*.json
+*.log
