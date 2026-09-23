@@ -10,23 +10,9 @@
 sudo mkdir -p /opt/mantou-toolbox && cd /opt/mantou-toolbox && curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-run.sh | sudo sh
 ```
 
-首次运行会自动创建 `.env`、数据目录和内容目录，自动生成随机 `APP_SECRET`，并探测服务器公网 IPv4 来设置 `APP_BASE_URL`。配置文件权限为仅 root 可读写。之后无需手工填写服务器 IP 或随机密钥。
+脚本会自动拉取镜像并启动容器。首次运行会创建 `.env`、数据目录和内容目录，生成随机 `APP_SECRET`，并探测服务器公网 IPv4 来设置 `APP_BASE_URL`。配置文件权限为仅 root 可读写，无需手工填写服务器 IP 或随机密钥。
 
 微信 AppID 会从本项目配置自动写入。微信 AppSecret 由微信公众平台单独发放，不能自动生成；未配置时服务仍会部署并提供下载接口，微信资料登录保持关闭。需要登录时再将 AppSecret 写入 `/opt/mantou-toolbox/.env` 并重启容器。
-
-启动容器：
-
-```sh
-sudo docker run -itd --restart unless-stopped \
-  --env-file "$PWD/.env" \
-  -p 8787:8787 \
-  -v "$PWD/data:/app/storage" \
-  -v "$PWD/content:/app/content:ro" \
-  -v /etc/localtime:/etc/localtime:ro \
-  -v /etc/timezone:/etc/timezone:ro \
-  --name mantou-toolbox \
-  ghcr.io/timshitpig/mantou-toolbox-backend:latest
-```
 
 检查服务：
 
