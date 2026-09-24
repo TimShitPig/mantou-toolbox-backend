@@ -2,12 +2,14 @@ name: mantou-toolbox
 
 services:
   backend:
+    container_name: mantou-toolbox
     image: "${BACKEND_IMAGE:-mantou-toolbox-backend:local}"
     build:
       context: .
       dockerfile: Dockerfile
       args:
         APP_BUILD_REVISION: "${APP_BUILD_REVISION:-unknown}"
+        APP_BUILD_VERSION: "${APP_BUILD_VERSION:-unknown}"
     restart: unless-stopped
     init: true
     ports:
@@ -19,6 +21,8 @@ services:
       APP_BASE_URL: "${APP_BASE_URL:-http://127.0.0.1:${PUBLIC_PORT:-8787}}"
       APP_SECRET: "${APP_SECRET:-change-this-secret-before-production}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+      UPDATE_AGENT_URL: "http://updater:8787"
+      UPDATE_AGENT_SECRET: "${UPDATE_AGENT_SECRET:-${APP_SECRET:-}}"
       CORS_ALLOW_ORIGIN: "${CORS_ALLOW_ORIGIN:-*}"
       ALLOW_DEVELOPMENT_LOGIN: "${ALLOW_DEVELOPMENT_LOGIN:-false}"
       SESSION_TTL_DAYS: "${SESSION_TTL_DAYS:-30}"
@@ -37,6 +41,9 @@ services:
       CONTENT_CATALOG_FILE: "${CONTENT_CATALOG_FILE:-}"
       CONTENT_PROVIDER_URL: "${CONTENT_PROVIDER_URL:-}"
       IMAGE_PROXY_ALLOWLIST: "${IMAGE_PROXY_ALLOWLIST:-qimao.com,wtzw.com,fanqienovel.com,fqnovel.com,changdunovel.com}"
+    depends_on:
+      updater:
+        condition: service_healthy
     volumes:
       - mantou-storage:/app/storage
       # Put an authorized catalog at ./content/catalog.json and set
@@ -48,6 +55,39 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+
+  updater:
+    container_name: mantou-toolbox-updater
+    image: "${UPDATE_AGENT_IMAGE:-${BACKEND_IMAGE:-mantou-toolbox-backend:local}}"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_BUILD_REVISION: "${APP_BUILD_REVISION:-unknown}"
+        APP_BUILD_VERSION: "${APP_BUILD_VERSION:-unknown}"
+    command: ["node", "--no-warnings", "src/update-agent.js"]
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      UPDATE_AGENT_SECRET: "${UPDATE_AGENT_SECRET:-${APP_SECRET:-}}"
+      UPDATE_AGENT_IMAGE: "${UPDATE_AGENT_IMAGE:-${BACKEND_IMAGE:-mantou-toolbox-backend:local}}"
+      UPDATE_AGENT_PORT: "8787"
+      UPDATE_TARGET_NAME: "mantou-toolbox"
+      UPDATE_DEPLOY_DIR: "${UPDATE_DEPLOY_DIR:-${PWD:-/workspace}}"
+      UPDATE_PROJECT_NAME: "mantou-toolbox"
+      UPDATE_MODE: "compose"
+      UPDATE_AGENT_STATE_FILE: "/app/storage/update-agent-state.json"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - mantou-storage:/app/storage
+      - "${UPDATE_DEPLOY_DIR:-${PWD:-.}}:${UPDATE_DEPLOY_DIR:-${PWD:-/workspace}}"
+    working_dir: "${UPDATE_DEPLOY_DIR:-${PWD:-/workspace}}"
+    healthcheck:
+      test: ["CMD", "node", "--input-type=module", "-e", "const r=await fetch('http://127.0.0.1:8787/healthz'); if (!r.ok) process.exit(1)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
 
 volumes:
   mantou-storage:

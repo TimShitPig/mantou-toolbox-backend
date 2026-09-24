@@ -3,7 +3,12 @@ set -eu
 
 IMAGE="${IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}"
 NAME="${NAME:-mantou-toolbox}"
+UPDATER_IMAGE="${UPDATER_IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}"
+UPDATE_AGENT_NAME="${UPDATE_AGENT_NAME:-${NAME}-updater}"
+UPDATE_NETWORK="${UPDATE_NETWORK:-${NAME}-network}"
+UPDATE_AGENT_INTERNAL="${UPDATE_AGENT_INTERNAL:-false}"
 FORCE_UPDATE="${FORCE_UPDATE:-false}"
+GITHUB_PROXY="${GITHUB_PROXY:-}"
 PUBLIC_PORT="${PUBLIC_PORT:-${PORT:-}}"
 if [ -z "$PUBLIC_PORT" ] && [ -f "$PWD/.env" ]; then
   PUBLIC_PORT="$(sed -n 's/^PUBLIC_PORT=//p' "$PWD/.env" | tail -n 1)"
@@ -11,6 +16,17 @@ fi
 PUBLIC_PORT="${PUBLIC_PORT:-8787}"
 WECHAT_APP_ID="${WECHAT_APP_ID:-wx35d2ab50302daa5f}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+
+case "$GITHUB_PROXY" in
+  '') GITHUB_API_BASE='https://api.github.com' ;;
+  'https://edgeone.gh-proxy.com'|'https://hk.gh-proxy.com'|'https://gh-proxy.com'|'https://gh.hik.top')
+    GITHUB_API_BASE="${GITHUB_PROXY}/https://api.github.com"
+    ;;
+  *)
+    printf '%s\n' 'Unsupported GitHub proxy address.' >&2
+    exit 2
+    ;;
+esac
 
 detect_public_ipv4() {
   for endpoint in https://api.ipify.org https://ifconfig.me/ip https://checkip.amazonaws.com; do
@@ -46,6 +62,7 @@ if [ ! -f "$PWD/.env" ]; then
   fi
   APP_SECRET="${APP_SECRET:-$(generate_secret)}"
   ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(generate_secret)}"
+  UPDATE_AGENT_SECRET="${UPDATE_AGENT_SECRET:-$(generate_secret)}"
   cat > "$PWD/.env" <<EOF
 NODE_ENV=production
 HOST=0.0.0.0
@@ -54,6 +71,7 @@ PUBLIC_PORT=${PUBLIC_PORT}
 APP_BASE_URL=${APP_BASE_URL}
 APP_SECRET=${APP_SECRET}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
+UPDATE_AGENT_SECRET=${UPDATE_AGENT_SECRET}
 ALLOW_DEVELOPMENT_LOGIN=false
 WECHAT_APP_ID=${WECHAT_APP_ID}
 WECHAT_APP_SECRET=${WECHAT_APP_SECRET:-}
@@ -63,6 +81,21 @@ EOF
   if [ -z "${WECHAT_APP_SECRET:-}" ]; then
     printf '%s\n' 'WeChat profile login stays disabled until WECHAT_APP_SECRET is added to .env.'
   fi
+fi
+
+SAVED_UPDATE_AGENT_SECRET="$(sed -n 's/^UPDATE_AGENT_SECRET=//p' "$PWD/.env" | tail -n 1)"
+if [ -z "$SAVED_UPDATE_AGENT_SECRET" ]; then
+  UPDATE_AGENT_SECRET="${UPDATE_AGENT_SECRET:-$(generate_secret)}"
+  if grep -q '^UPDATE_AGENT_SECRET=' "$PWD/.env"; then
+    TEMP_ENV="$(mktemp)"
+    sed "s/^UPDATE_AGENT_SECRET=.*/UPDATE_AGENT_SECRET=${UPDATE_AGENT_SECRET}/" "$PWD/.env" > "$TEMP_ENV"
+    cat "$TEMP_ENV" > "$PWD/.env"
+    rm -f "$TEMP_ENV"
+  else
+    printf '\nUPDATE_AGENT_SECRET=%s\n' "$UPDATE_AGENT_SECRET" >> "$PWD/.env"
+  fi
+  chmod 600 "$PWD/.env"
+  SAVED_UPDATE_AGENT_SECRET="$UPDATE_AGENT_SECRET"
 fi
 
 SAVED_ADMIN_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' "$PWD/.env" | tail -n 1)"
@@ -85,15 +118,65 @@ printf 'Admin password is stored in %s/.env (read with: sudo grep ^ADMIN_PASSWOR
 
 if [ "$FORCE_UPDATE" != 'true' ]; then
   CURRENT_REVISION="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$NAME" 2>/dev/null || true)"
-  LATEST_RESPONSE="$(curl -fsS --connect-timeout 5 --max-time 10 https://api.github.com/repos/TimShitPig/mantou-toolbox-backend/commits/main 2>/dev/null || true)"
+  LATEST_RESPONSE="$(curl -fsS --connect-timeout 5 --max-time 10 "${GITHUB_API_BASE}/repos/TimShitPig/mantou-toolbox-backend/commits/main" 2>/dev/null || true)"
   LATEST_REVISION="$(printf '%s\n' "$LATEST_RESPONSE" | sed -n 's/.*"sha":[[:space:]]*"\([0-9a-f]*\)".*/\1/p' | head -n 1)"
   if [ "${#CURRENT_REVISION}" -eq 40 ] && [ "$CURRENT_REVISION" = "$LATEST_REVISION" ]; then
-    printf 'Already up to date (%s); no image pull needed.\n' "$CURRENT_REVISION"
-    exit 0
+    AGENT_RUNNING="$(docker inspect --format '{{.State.Running}}' "$UPDATE_AGENT_NAME" 2>/dev/null || true)"
+    if [ "$AGENT_RUNNING" = 'true' ]; then
+      printf 'Already up to date (%s); no image pull needed.\n' "$CURRENT_REVISION"
+      exit 0
+    fi
   fi
 fi
 
 docker pull "$IMAGE"
+if [ "$UPDATE_AGENT_INTERNAL" != 'true' ]; then
+  docker pull "$UPDATER_IMAGE"
+  docker network create "$UPDATE_NETWORK" >/dev/null 2>&1 || true
+  docker rm -f "$UPDATE_AGENT_NAME" >/dev/null 2>&1 || true
+  docker run -d \
+    --restart unless-stopped \
+    --user 0:0 \
+    --network "$UPDATE_NETWORK" \
+    --network-alias updater \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$PWD:$PWD" \
+    -v "$PWD/data:/app/storage" \
+    -w "$PWD" \
+    --env-file "$PWD/.env" \
+    -e UPDATE_AGENT_NAME="$UPDATE_AGENT_NAME" \
+    -e UPDATE_TARGET_NAME="$NAME" \
+    -e UPDATE_NETWORK="$UPDATE_NETWORK" \
+    -e UPDATE_DEPLOY_DIR="$PWD" \
+    -e UPDATE_MODE=run \
+    -e UPDATE_AGENT_PORT=8787 \
+    -e UPDATE_AGENT_STATE_FILE=/app/storage/update-agent-state.json \
+    --name "$UPDATE_AGENT_NAME" \
+    "$UPDATER_IMAGE" node --no-warnings src/update-agent.js
+  AGENT_READY=false
+  ATTEMPT=0
+  while [ "$ATTEMPT" -lt 30 ]; do
+    if docker exec "$UPDATE_AGENT_NAME" node --input-type=module -e "const r=await fetch('http://127.0.0.1:8787/healthz'); if (!r.ok) process.exit(1)" >/dev/null 2>&1; then
+      AGENT_READY=true
+      break
+    fi
+    ATTEMPT=$((ATTEMPT + 1))
+    sleep 1
+  done
+  if [ "$AGENT_READY" != 'true' ]; then
+    printf '%s\n' 'Update agent did not become healthy; existing backend was left running.' >&2
+    exit 1
+  fi
+fi
+CURRENT_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$NAME" 2>/dev/null || true)"
+CURRENT_APP_VERSION="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$NAME" 2>/dev/null | sed -n 's/^APP_BUILD_VERSION=//p' | tail -n 1)"
+case "$CURRENT_APP_VERSION" in
+  v[0-9]*.[0-9]*.[0-9]*) ;;
+  *) CURRENT_APP_VERSION='v0.0.0' ;;
+esac
+if [ -n "$CURRENT_IMAGE_ID" ]; then
+  docker tag "$CURRENT_IMAGE_ID" "ghcr.io/timshitpig/mantou-toolbox-backend:${CURRENT_APP_VERSION}" >/dev/null 2>&1 || true
+fi
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 if [ "$(id -u)" -eq 0 ]; then
   chown -R 1000:1000 "$PWD/data"
@@ -103,9 +186,12 @@ else
 fi
 docker run -itd \
   --restart unless-stopped \
+  --init \
   --user "$CONTAINER_USER" \
   --env-file "$PWD/.env" \
+  -e UPDATE_AGENT_URL=http://updater:8787 \
   -p "${PUBLIC_PORT}:8787" \
+  --network "$UPDATE_NETWORK" \
   -v "$PWD/data:/app/storage" \
   -v "$PWD/content:/app/content:ro" \
   -v /etc/localtime:/etc/localtime:ro \

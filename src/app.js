@@ -36,6 +36,36 @@ const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 const MAX_PROXY_BYTES = 5 * 1024 * 1024
 const UPDATE_REPOSITORY = 'TimShitPig/mantou-toolbox-backend'
 const UPDATE_CACHE_MS = 60 * 1000
+const GITHUB_PROXIES = Object.freeze({
+  github: null,
+  edgeone: 'https://edgeone.gh-proxy.com',
+  hk: 'https://hk.gh-proxy.com',
+  'gh-proxy': 'https://gh-proxy.com',
+  'gh-hik': 'https://gh.hik.top',
+})
+
+function proxyGithubUrl(url, proxyId) {
+  const baseUrl = GITHUB_PROXIES[proxyId]
+  return baseUrl ? `${baseUrl}/${url}` : url
+}
+
+function parseAppVersion(value) {
+  const match = String(value || '').trim().match(/^v?(\d+)\.(\d+)\.(\d+)$/)
+  if (!match) return null
+  return {
+    version: `v${match[1]}.${match[2]}.${match[3]}`,
+    parts: match.slice(1).map(Number),
+  }
+}
+
+function compareAppVersions(left, right) {
+  const leftParts = parseAppVersion(left).parts
+  const rightParts = parseAppVersion(right).parts
+  for (let index = 0; index < 3; index += 1) {
+    if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index]
+  }
+  return 0
+}
 
 function assertMethod(req, expected) {
   if (req.method !== expected) {
@@ -216,10 +246,11 @@ function createApp(options = {}) {
   const store = options.store || createDatabase(config.databasePath)
   const auth = options.auth || createAuth(store, config, options.fetchImpl)
   const updateFetch = options.updateFetchImpl || options.fetchImpl || globalThis.fetch
+  const proxyFetch = options.proxyFetchImpl || options.fetchImpl || globalThis.fetch
+  const updateAgentFetch = options.updateAgentFetchImpl || options.fetchImpl || globalThis.fetch
   let server = null
   let closed = false
-  let updateCache = null
-  let updateCacheAt = 0
+  const updateCache = new Map()
 
   function getRuntimeConfig() {
     return { ...config, ...store.getAdminSettings() }
@@ -292,71 +323,182 @@ function createApp(options = {}) {
     }, origin)
   }
 
-  async function handleAdminUpdates(req, res, origin) {
-    assertMethod(req, 'GET')
-    requireAdminSession(req)
-
-    if (!updateCache || Date.now() - updateCacheAt >= UPDATE_CACHE_MS) {
+  async function getAdminUpdateInfo(proxyId) {
+    let cached = updateCache.get(proxyId)
+    if (!cached || Date.now() - cached.checkedAt >= UPDATE_CACHE_MS) {
       const headers = {
         Accept: 'application/vnd.github+json',
         'User-Agent': 'mantou-toolbox-update-check',
       }
       const options = { headers, signal: AbortSignal.timeout(8000) }
-      let commitsResponse
+      let tagsResponse
       let runsResponse
       try {
-        [commitsResponse, runsResponse] = await Promise.all([
-          updateFetch(`https://api.github.com/repos/${UPDATE_REPOSITORY}/commits?per_page=100`, options),
-          updateFetch(`https://api.github.com/repos/${UPDATE_REPOSITORY}/actions/runs?branch=main&per_page=100`, options),
+        [tagsResponse, runsResponse] = await Promise.all([
+          updateFetch(proxyGithubUrl(`https://api.github.com/repos/${UPDATE_REPOSITORY}/tags?per_page=100`, proxyId), options),
+          updateFetch(proxyGithubUrl(`https://api.github.com/repos/${UPDATE_REPOSITORY}/actions/runs?per_page=100`, proxyId), options),
         ])
       } catch {
         throw new ApiError(502, 'update_check_failed')
       }
-      if (!commitsResponse.ok || !runsResponse.ok) {
+      if (!tagsResponse.ok || !runsResponse.ok) {
         throw new ApiError(502, 'update_check_failed')
       }
 
-      let commits
+      let tags
       let runs
       try {
-        ;[commits, runs] = await Promise.all([commitsResponse.json(), runsResponse.json()])
+        ;[tags, runs] = await Promise.all([tagsResponse.json(), runsResponse.json()])
       } catch {
         throw new ApiError(502, 'update_check_failed')
       }
-      if (!Array.isArray(commits) || !Array.isArray(runs.workflow_runs)) {
+      if (!Array.isArray(tags) || !Array.isArray(runs.workflow_runs)) {
         throw new ApiError(502, 'update_check_failed')
       }
 
       const publishedRevisions = new Set(runs.workflow_runs
         .filter((run) => run.name === 'Publish Docker image'
-          && run.head_branch === 'main'
           && run.status === 'completed'
           && run.conclusion === 'success')
         .map((run) => String(run.head_sha || '').toLowerCase()))
-      const versions = commits
-        .filter((commit) => /^[a-f0-9]{40}$/i.test(String(commit.sha || ''))
-          && publishedRevisions.has(String(commit.sha).toLowerCase()))
-        .map((commit) => ({
-          revision: String(commit.sha).toLowerCase(),
-          shortRevision: String(commit.sha).slice(0, 7).toLowerCase(),
-          message: String(commit.commit && commit.commit.message || '').split(/\r?\n/, 1)[0].slice(0, 120),
-          publishedAt: String(commit.commit && commit.commit.author && commit.commit.author.date || ''),
+      const versions = tags
+        .map((tag) => ({
+          ...parseAppVersion(tag.name),
+          revision: String(tag.commit && tag.commit.sha || '').toLowerCase(),
         }))
-      const currentRevision = /^[a-f0-9]{40}$/i.test(config.appBuildRevision)
-        ? config.appBuildRevision
-        : null
-      const currentIndex = versions.findIndex((version) => version.revision === currentRevision)
+        .filter((tag) => tag.version
+          && /^[a-f0-9]{40}$/.test(tag.revision)
+          && publishedRevisions.has(tag.revision))
+        .sort((left, right) => compareAppVersions(right.version, left.version))
+      const current = parseAppVersion(config.appBuildVersion)
       const latest = versions[0] || null
-      updateCache = {
-        currentRevision,
-        latest,
-        hasUpdate: Boolean(latest && latest.revision !== currentRevision),
-        rollbackVersions: currentIndex < 0 ? [] : versions.slice(currentIndex + 1, currentIndex + 4),
+      const rollbackVersions = current
+        ? versions.filter((version) => compareAppVersions(version.version, current.version) < 0).slice(0, 3)
+        : []
+      cached = {
+        checkedAt: Date.now(),
+        data: {
+          proxyId,
+          currentVersion: current && current.version,
+          latestVersion: latest && latest.version,
+          hasUpdate: Boolean(latest && (!current || compareAppVersions(latest.version, current.version) > 0)),
+          rollbackVersions: rollbackVersions.map((version) => version.version),
+          updateEnabled: Boolean(config.updateAgentUrl && config.updateAgentSecret),
+        },
       }
-      updateCacheAt = Date.now()
+      updateCache.set(proxyId, cached)
     }
 
-    sendJson(res, config, 200, { data: updateCache }, origin)
+    return cached.data
+  }
+
+  async function handleAdminUpdates(req, res, url, origin) {
+    assertMethod(req, 'GET')
+    requireAdminSession(req)
+    const proxyId = url.searchParams.get('proxyId') || 'gh-proxy'
+    if (!Object.hasOwn(GITHUB_PROXIES, proxyId)) throw new ApiError(400, 'admin_proxy_invalid')
+    const updateInfo = await getAdminUpdateInfo(proxyId)
+    sendJson(res, config, 200, { data: updateInfo }, origin)
+  }
+
+  async function callUpdateAgent(pathname, options = {}) {
+    if (!config.updateAgentUrl || !config.updateAgentSecret) {
+      throw new ApiError(503, 'update_agent_unavailable')
+    }
+    let response
+    try {
+      response = await updateAgentFetch(new URL(pathname, `${config.updateAgentUrl}/`), {
+        method: options.method || 'GET',
+        headers: {
+          Authorization: `Bearer ${config.updateAgentSecret}`,
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+        signal: AbortSignal.timeout(8000),
+      })
+    } catch {
+      throw new ApiError(503, 'update_agent_unavailable')
+    }
+    let payload = {}
+    try { payload = await response.json() } catch {}
+    if (!response.ok) {
+      const statusCode = response.status === 409 ? 409 : (response.status >= 400 && response.status < 500 ? 400 : 502)
+      throw new ApiError(statusCode, payload.error || 'update_agent_failed')
+    }
+    return payload.data
+  }
+
+  async function handleAdminUpdate(req, res, origin) {
+    requireAdminSession(req)
+    assertMethod(req, 'POST')
+    const body = await readJson(req, 16 * 1024)
+    const action = String(body.action || 'update')
+    const target = parseAppVersion(body.version)
+    const proxyId = String(body.proxyId || 'gh-proxy')
+    if (!['update', 'rollback'].includes(action) || !target || !Object.hasOwn(GITHUB_PROXIES, proxyId)) {
+      throw new ApiError(400, 'update_target_invalid')
+    }
+    const updateInfo = await getAdminUpdateInfo(proxyId)
+    if (action === 'update' && (!updateInfo.hasUpdate || updateInfo.latestVersion !== target.version)) {
+      throw new ApiError(409, 'update_version_unavailable')
+    }
+    if (action === 'rollback' && !updateInfo.rollbackVersions.includes(target.version)) {
+      throw new ApiError(400, 'rollback_version_unavailable')
+    }
+    const result = await callUpdateAgent('/api/update', {
+      method: 'POST',
+      body: {
+        action,
+        version: target.version,
+        fallbackVersion: updateInfo.currentVersion || '',
+        proxyId,
+      },
+    })
+    sendJson(res, config, 202, { data: result }, origin)
+  }
+
+  async function handleAdminUpdateOperation(req, res, url, origin) {
+    assertMethod(req, 'GET')
+    requireAdminSession(req)
+    const operationId = url.searchParams.get('id') || ''
+    if (!/^[a-f0-9-]{36}$/.test(operationId)) throw new ApiError(400, 'update_operation_invalid')
+    const result = await callUpdateAgent(`/api/operations/${operationId}`)
+    sendJson(res, config, 200, { data: result }, origin)
+  }
+
+  async function handleAdminProxyTest(req, res, origin) {
+    assertMethod(req, 'POST')
+    requireAdminSession(req)
+    const body = await readJson(req, 16 * 1024)
+    const proxyId = String(body.proxyId || '')
+    if (!Object.hasOwn(GITHUB_PROXIES, proxyId)) {
+      throw new ApiError(400, 'admin_proxy_invalid')
+    }
+
+    const startedAt = Date.now()
+    let statusCode = null
+    let connected = false
+    try {
+      const response = await proxyFetch(
+        proxyGithubUrl(`https://raw.githubusercontent.com/${UPDATE_REPOSITORY}/main/docker-update.sh`, proxyId),
+        {
+          headers: { Accept: 'text/plain', 'User-Agent': 'mantou-toolbox-proxy-test' },
+          signal: AbortSignal.timeout(8000),
+        }
+      )
+      statusCode = response.status
+      const script = await response.text()
+      connected = response.ok && script.includes('set -eu') && script.includes('docker pull')
+    } catch {}
+
+    sendJson(res, config, 200, {
+      data: {
+        proxyId,
+        connected,
+        statusCode,
+        latencyMs: Date.now() - startedAt,
+      },
+    }, origin)
   }
 
   async function handleAdminSettings(req, res, origin) {
@@ -697,7 +839,10 @@ function createApp(options = {}) {
       if (pathname === '/api/admin/login') return await handleAdminLogin(req, res, origin)
       if (pathname === '/api/admin/logout') return await handleAdminLogout(req, res, origin)
       if (pathname === '/api/admin/summary') return await handleAdminSummary(req, res, origin)
-      if (pathname === '/api/admin/updates') return await handleAdminUpdates(req, res, origin)
+      if (pathname === '/api/admin/updates') return await handleAdminUpdates(req, res, url, origin)
+      if (pathname === '/api/admin/update') return await handleAdminUpdate(req, res, origin)
+      if (pathname === '/api/admin/update-operation') return await handleAdminUpdateOperation(req, res, url, origin)
+      if (pathname === '/api/admin/proxies/test') return await handleAdminProxyTest(req, res, origin)
       if (pathname === '/api/admin/settings') return await handleAdminSettings(req, res, origin)
       if (pathname === '/healthz') {
         assertMethod(req, 'GET')

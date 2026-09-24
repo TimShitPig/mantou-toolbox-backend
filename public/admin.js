@@ -6,7 +6,22 @@
   const loginMessage = document.getElementById('login-message')
   const navItems = [...document.querySelectorAll('.nav-item')]
   const updateDialog = document.getElementById('update-dialog')
+  const proxyHosts = {
+    github: null,
+    edgeone: 'https://edgeone.gh-proxy.com',
+    hk: 'https://hk.gh-proxy.com',
+    'gh-proxy': 'https://gh-proxy.com',
+    'gh-hik': 'https://gh.hik.top',
+  }
+  const proxyRadios = [...document.querySelectorAll('input[name="github-proxy"]')]
+  let updateProxyId = 'gh-proxy'
+  try {
+    const savedProxy = localStorage.getItem('mantou-admin-update-proxy')
+    if (Object.hasOwn(proxyHosts, savedProxy)) updateProxyId = savedProxy
+  } catch {}
+  for (const radio of proxyRadios) radio.checked = radio.value === updateProxyId
   let updateInfo = null
+  let operationInProgress = false
   let latestData = null
 
   const settingForms = {
@@ -225,21 +240,25 @@
 
   function renderUpdateInfo(info) {
     updateInfo = info
-    const latest = info.latest
-    setText('current-revision', info.currentRevision ? info.currentRevision.slice(0, 7) : '本地构建')
-    setText('latest-revision', latest ? latest.shortRevision : '暂无')
-    setText('latest-message', latest ? latest.message : '')
-    setText('update-status', latest
-      ? (info.hasUpdate ? '发现可用更新' : '当前已是最新版本')
-      : '暂无已发布的镜像版本')
-    document.getElementById('copy-update-button').disabled = !latest || !info.hasUpdate
+    setText('current-version', info.currentVersion || '未知')
+    setText('latest-version', info.latestVersion || '暂无')
+    setText('available-version', info.latestVersion || '')
+    document.getElementById('update-available').hidden = !info.hasUpdate
+    if (!info.updateEnabled) {
+      setText('update-status', '一键更新助手未连接')
+      setMessage(document.getElementById('update-action-message'), '在服务器执行一次部署更新脚本后即可启用。', 'error')
+    } else {
+      setText('update-status', info.hasUpdate ? '有新版本可用' : '当前已是最新版本')
+      setMessage(document.getElementById('update-action-message'), '', '')
+    }
+    document.getElementById('apply-update-button').disabled = operationInProgress || !info.updateEnabled || !info.hasUpdate || !info.latestVersion
 
     const select = document.getElementById('rollback-version')
     select.replaceChildren()
-    for (const version of info.rollbackVersions) {
+    for (const version of info.rollbackVersions || []) {
       const option = document.createElement('option')
-      option.value = version.revision
-      option.textContent = `${version.shortRevision} · ${formatDate(version.publishedAt)}`
+      option.value = version
+      option.textContent = version
       select.appendChild(option)
     }
     if (!info.rollbackVersions.length) {
@@ -249,69 +268,163 @@
       select.appendChild(option)
     }
     select.disabled = info.rollbackVersions.length === 0
-    document.getElementById('copy-rollback-button').disabled = info.rollbackVersions.length === 0
+    document.getElementById('apply-rollback-button').disabled = operationInProgress || !info.updateEnabled || !info.rollbackVersions.length
+  }
+
+  async function loadUpdateInfo() {
+    const requestedProxy = updateProxyId
+    updateInfo = null
+    setText('update-status', '正在检查版本…')
+    setText('current-version', '--')
+    setText('latest-version', '--')
+    setText('available-version', '')
+    document.getElementById('update-available').hidden = true
     setMessage(document.getElementById('update-action-message'), '', '')
-  }
-
-  async function copyText(value) {
+    document.getElementById('apply-update-button').disabled = true
+    document.getElementById('apply-rollback-button').disabled = true
+    const select = document.getElementById('rollback-version')
+    select.replaceChildren(new Option('读取中…', ''))
+    select.disabled = true
     try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(value)
-        return true
-      }
-    } catch {}
-
-    const input = document.createElement('textarea')
-    input.value = value
-    input.setAttribute('readonly', '')
-    input.style.position = 'fixed'
-    input.style.opacity = '0'
-    document.body.appendChild(input)
-    input.select()
-    let copied = false
-    try { copied = document.execCommand('copy') } catch {}
-    input.remove()
-    return copied
-  }
-
-  function updateCommand(revision) {
-    const image = `ghcr.io/timshitpig/mantou-toolbox-backend:sha-${revision.slice(0, 7)}`
-    return `cd /opt/mantou-toolbox && curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh | sudo env FORCE_UPDATE=true IMAGE=${image} sh`
-  }
-
-  async function copySelectedCommand(revision) {
-    const message = document.getElementById('update-action-message')
-    if (!/^[a-f0-9]{40}$/.test(revision || '')) {
-      setMessage(message, '版本信息无效。', 'error')
-      return
+      const info = await api(`/api/admin/updates?proxyId=${encodeURIComponent(requestedProxy)}`)
+      if (requestedProxy === updateProxyId) renderUpdateInfo(info)
+    } catch (error) {
+      if (requestedProxy !== updateProxyId) return
+      setText('update-status', error.message === 'admin_login_required' ? '登录状态已过期' : '版本检查失败')
+      const message = ({
+        update_check_failed: '读取 GitHub 版本信息失败，请稍后重试。',
+        update_agent_unavailable: '更新助手未运行，请先在服务器执行一次部署更新。',
+        admin_login_required: '登录状态已过期，请重新登录。',
+      })[error.message] || error.message
+      select.replaceChildren(new Option('暂无可回退版本', ''))
+      setMessage(document.getElementById('update-action-message'), message, 'error')
     }
-    const copied = await copyText(updateCommand(revision))
-    setMessage(message, copied ? '服务器命令已复制。' : '复制失败，请重试。', copied ? 'success' : 'error')
   }
 
   async function openUpdateDialog() {
     updateDialog.showModal()
     updateInfo = null
-    setText('update-status', '正在检查版本…')
-    setText('current-revision', '--')
-    setText('latest-revision', '--')
-    setText('latest-message', '')
+    setText('current-version', '--')
+    setText('latest-version', '--')
+    setText('available-version', '')
+    document.getElementById('update-available').hidden = true
     setMessage(document.getElementById('update-action-message'), '', '')
-    document.getElementById('copy-update-button').disabled = true
-    document.getElementById('copy-rollback-button').disabled = true
+    setMessage(document.getElementById('proxy-test-status'), '', '')
+    document.getElementById('apply-update-button').disabled = true
+    document.getElementById('apply-rollback-button').disabled = true
     const select = document.getElementById('rollback-version')
-    select.replaceChildren()
-    select.add(new Option('读取中…', ''))
+    select.replaceChildren(new Option('读取中…', ''))
     select.disabled = true
+    await loadUpdateInfo()
+  }
+
+  function wait(milliseconds) {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds))
+  }
+
+  async function pollUpdateOperation(operationId, action, version) {
+    const deadline = Date.now() + 8 * 60 * 1000
+    let serviceWasUnavailable = false
+    while (Date.now() < deadline) {
+      await wait(1200)
+      try {
+        const operation = await api(`/api/admin/update-operation?id=${encodeURIComponent(operationId)}`)
+        setText('update-status', operation.message || '正在更新…')
+        if (operation.state === 'completed') {
+          const resultText = action === 'rollback' ? `已回退到 ${version}` : `已更新到 ${version}`
+          setMessage(document.getElementById('update-action-message'), `${resultText}，正在重新加载…`, 'success')
+          setTimeout(() => window.location.reload(), 900)
+          return
+        }
+        if (operation.state === 'rolled_back') {
+          setMessage(document.getElementById('update-action-message'), operation.message || '更新失败，已恢复原版本。', 'error')
+          setTimeout(() => window.location.reload(), 1200)
+          return
+        }
+        if (operation.state === 'failed') {
+          operationInProgress = false
+          const failure = operation.error || '更新失败。'
+          await loadUpdateInfo()
+          setText('update-status', '更新失败')
+          setMessage(document.getElementById('update-action-message'), failure, 'error')
+          return
+        }
+      } catch (error) {
+        if (error.message === 'admin_login_required') {
+          operationInProgress = false
+          return
+        }
+        if (error.message === 'Failed to fetch' || error.message.includes('fetch')) serviceWasUnavailable = true
+        setText('update-status', '服务正在重启…')
+        setMessage(document.getElementById('update-action-message'), '等待新版本启动。', '')
+        if (serviceWasUnavailable || error.message.includes('404')) {
+          try {
+            const health = await fetch('/healthz', { cache: 'no-store' })
+            if (health.ok) {
+              setMessage(document.getElementById('update-action-message'), `服务已启动，正在重新加载…`, 'success')
+              setTimeout(() => window.location.reload(), 900)
+              return
+            }
+          } catch {}
+        }
+      }
+    }
+    setText('update-status', '更新状态查询超时')
+    setMessage(document.getElementById('update-action-message'), '请刷新页面查看服务状态。', 'error')
+    operationInProgress = false
+    document.getElementById('apply-update-button').disabled = !updateInfo || !updateInfo.updateEnabled || !updateInfo.hasUpdate
+    document.getElementById('apply-rollback-button').disabled = !updateInfo || !updateInfo.updateEnabled || !updateInfo.rollbackVersions.length
+  }
+
+  async function applyVersion(action, version) {
+    const updateButton = document.getElementById('apply-update-button')
+    const rollbackButton = document.getElementById('apply-rollback-button')
+    operationInProgress = true
+    updateButton.disabled = true
+    rollbackButton.disabled = true
+    setText('update-status', action === 'update' ? `正在更新到 ${version}…` : `正在回退到 ${version}…`)
+    setMessage(document.getElementById('update-action-message'), '正在准备 Docker 镜像，服务随后会自动重启。', '')
     try {
-      renderUpdateInfo(await api('/api/admin/updates'))
+      const result = await api('/api/admin/update', {
+        method: 'POST',
+        body: JSON.stringify({ action, version, proxyId: updateProxyId }),
+      })
+      await pollUpdateOperation(result.operationId, action, version)
     } catch (error) {
-      setText('update-status', error.message === 'admin_login_required' ? '登录状态已过期' : '版本检查失败')
-      const message = error.message === 'update_check_failed'
-        ? '读取 GitHub 版本信息失败，请稍后重试。'
-        : (error.message === 'admin_login_required' ? '登录状态已过期，请重新登录。' : error.message)
-      select.replaceChildren(new Option('暂无可回退版本', ''))
+      operationInProgress = false
+      const message = ({
+        update_agent_unavailable: '更新助手未运行，请先在服务器执行一次部署更新。',
+        update_in_progress: '已有更新任务正在执行。',
+        update_version_unavailable: '此版本暂不可更新，请重新检查版本。',
+        rollback_version_unavailable: '此回退版本已不可用，请重新检查。',
+      })[error.message] || error.message
+      setText('update-status', '更新未启动')
       setMessage(document.getElementById('update-action-message'), message, 'error')
+      updateButton.disabled = !updateInfo || !updateInfo.updateEnabled || !updateInfo.hasUpdate
+      rollbackButton.disabled = !updateInfo || !updateInfo.updateEnabled || !updateInfo.rollbackVersions.length
+    }
+  }
+
+  async function testSelectedProxy() {
+    const button = document.getElementById('proxy-test-button')
+    const status = document.getElementById('proxy-test-status')
+    const testedProxy = updateProxyId
+    button.disabled = true
+    setMessage(status, '正在测试…', '')
+    try {
+      const result = await api('/api/admin/proxies/test', {
+        method: 'POST',
+        body: JSON.stringify({ proxyId: testedProxy }),
+      })
+      if (testedProxy !== updateProxyId) return
+      const resultText = result.connected
+        ? `连接成功 · HTTP ${result.statusCode} · ${result.latencyMs} ms`
+        : `连接失败${result.statusCode ? ` · HTTP ${result.statusCode}` : ''} · ${result.latencyMs} ms`
+      setMessage(status, resultText, result.connected ? 'success' : 'error')
+    } catch (error) {
+      if (testedProxy === updateProxyId) setMessage(status, error.message, 'error')
+    } finally {
+      button.disabled = false
     }
   }
 
@@ -346,16 +459,29 @@
     item.addEventListener('click', () => setPage(item.dataset.page))
   }
   window.addEventListener('hashchange', () => setPage(location.hash.slice(1), false))
+  for (const radio of proxyRadios) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return
+      updateProxyId = radio.value
+      try { localStorage.setItem('mantou-admin-update-proxy', updateProxyId) } catch {}
+      setMessage(document.getElementById('proxy-test-status'), '', '')
+      if (updateDialog.open) loadUpdateInfo()
+    })
+  }
+  document.getElementById('proxy-test-button').addEventListener('click', testSelectedProxy)
   document.getElementById('update-button').addEventListener('click', openUpdateDialog)
   document.getElementById('update-close-button').addEventListener('click', () => updateDialog.close())
   updateDialog.addEventListener('click', (event) => {
     if (event.target === updateDialog) updateDialog.close()
   })
-  document.getElementById('copy-update-button').addEventListener('click', () => {
-    if (updateInfo && updateInfo.latest) copySelectedCommand(updateInfo.latest.revision)
+  document.getElementById('apply-update-button').addEventListener('click', () => {
+    if (updateInfo && updateInfo.latestVersion && updateInfo.hasUpdate) {
+      applyVersion('update', updateInfo.latestVersion)
+    }
   })
-  document.getElementById('copy-rollback-button').addEventListener('click', () => {
-    copySelectedCommand(document.getElementById('rollback-version').value)
+  document.getElementById('apply-rollback-button').addEventListener('click', () => {
+    const version = document.getElementById('rollback-version').value
+    if (updateInfo && updateInfo.rollbackVersions.includes(version)) applyVersion('rollback', version)
   })
   document.getElementById('refresh-button').addEventListener('click', refreshDashboard)
   document.getElementById('logout-button').addEventListener('click', async () => {

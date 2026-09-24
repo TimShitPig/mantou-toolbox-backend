@@ -73,15 +73,10 @@ async function waitForCompletedJob(baseUrl, downloadId, token) {
 test('HTTP API workflow starts a real server and persists local state', async () => {
   const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mantou-api-test-'))
   const storageDir = path.join(temporaryRoot, 'storage')
-  const currentRevision = 'c'.repeat(40)
+  const currentVersion = 'v0.0.4'
   const revisions = ['a', 'b', 'c', 'd', 'e', 'f', '1'].map((character) => character.repeat(40))
-  const commits = revisions.map((sha, index) => ({
-    sha,
-    commit: {
-      message: `Release ${index}`,
-      author: { date: `2026-09-${String(23 - index).padStart(2, '0')}T00:00:00Z` },
-    },
-  }))
+  const versionNames = ['v0.0.6', 'v0.0.5', 'v0.0.4', 'v0.0.1', 'v0.0.3', 'v0.0.2', 'v0.0.0']
+  const tags = versionNames.map((name, index) => ({ name, commit: { sha: revisions[index] } }))
   const workflowRuns = revisions.map((sha, index) => ({
     name: 'Publish Docker image',
     head_branch: 'main',
@@ -89,6 +84,9 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     status: 'completed',
     conclusion: index === 3 ? 'failure' : 'success',
   }))
+  const updateFetchUrls = []
+  let testedProxyUrl = ''
+  const updateAgentCalls = []
   const config = createConfig({}, {
     host: '127.0.0.1',
     port: 0,
@@ -99,17 +97,43 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     downloadDir: path.join(storageDir, 'downloads'),
     appSecret: 'test',
     adminPassword: 'integration-admin-password',
-    appBuildRevision: currentRevision,
+    appBuildVersion: currentVersion,
+    updateAgentUrl: 'http://update-agent.test',
+    updateAgentSecret: 'test-update-agent-secret',
     allowDevelopmentLogin: true,
   })
   const app = createApp({
     config,
-    updateFetchImpl: async (url) => ({
-      ok: true,
-      json: async () => String(url).includes('/actions/runs?')
-        ? { workflow_runs: workflowRuns }
-        : commits,
-    }),
+    updateAgentFetchImpl: async (url, options) => {
+      updateAgentCalls.push({ url: String(url), options })
+      const isStart = String(url).endsWith('/api/update')
+      return {
+        ok: true,
+        status: isStart ? 202 : 200,
+        json: async () => ({
+          data: isStart
+            ? { operationId: '5a410ec7-945d-4f2c-8b95-751bd3a969a1', state: 'queued' }
+            : { operationId: '5a410ec7-945d-4f2c-8b95-751bd3a969a1', state: 'completed', version: 'v0.0.6' },
+        }),
+      }
+    },
+    updateFetchImpl: async (url) => {
+      updateFetchUrls.push(String(url))
+      return {
+        ok: true,
+        json: async () => String(url).includes('/actions/runs?')
+          ? { workflow_runs: workflowRuns }
+          : tags,
+      }
+    },
+    proxyFetchImpl: async (url) => {
+      testedProxyUrl = String(url)
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '#!/usr/bin/env sh\nset -eu\ndocker pull image\n',
+      }
+    },
   })
 
   try {
@@ -127,6 +151,12 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.match(adminMarkup, /aria-label="后台导航"/)
     assert.match(adminMarkup, /id="update-button"/)
     assert.match(adminMarkup, /id="update-dialog"/)
+    assert.match(adminMarkup, /id="apply-update-button"/)
+    assert.match(adminMarkup, /id="apply-rollback-button"/)
+    for (const proxy of ['github', 'edgeone', 'hk', 'gh-proxy', 'gh-hik']) {
+      assert.match(adminMarkup, new RegExp(`value="${proxy}"`))
+    }
+    assert.match(adminMarkup, /测试代理连通性/)
     for (const page of ['novel', 'logs', 'data', 'ads', 'status']) {
       assert.match(adminMarkup, new RegExp(`data-page="${page}"`))
       assert.match(adminMarkup, new RegExp(`id="page-${page}"`))
@@ -135,6 +165,18 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(anonymousAdmin.response.status, 401)
     const anonymousUpdateCheck = await requestJson(baseUrl, '/api/admin/updates')
     assert.equal(anonymousUpdateCheck.response.status, 401)
+    const anonymousProxyTest = await requestJson(baseUrl, '/api/admin/proxies/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proxyId: 'gh-proxy' }),
+    })
+    assert.equal(anonymousProxyTest.response.status, 401)
+    const anonymousUpdate = await requestJson(baseUrl, '/api/admin/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', version: 'v2.2.0' }),
+    })
+    assert.equal(anonymousUpdate.response.status, 401)
 
     const unauthenticatedProfile = await requestJson(baseUrl, '/api/v1/auth/profile.php')
     assert.equal(unauthenticatedProfile.response.status, 401)
@@ -294,17 +336,73 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(adminSummary.payload.data.settings.downloadEnabled, true)
     assert.equal(adminSummary.payload.data.jobs[0].title, 'Integration Book')
 
-    const updateInfo = await requestJson(baseUrl, '/api/admin/updates', {
+    const proxyTest = await requestJson(baseUrl, '/api/admin/proxies/test', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proxyId: 'gh-proxy' }),
+    })
+    assert.equal(proxyTest.response.status, 200)
+    assert.equal(proxyTest.payload.data.connected, true)
+    assert.equal(proxyTest.payload.data.statusCode, 200)
+    assert.match(testedProxyUrl, /^https:\/\/gh-proxy\.com\/https:\/\/raw\.githubusercontent\.com\//)
+
+    const invalidProxyTest = await requestJson(baseUrl, '/api/admin/proxies/test', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proxyId: 'https://attacker.example' }),
+    })
+    assert.equal(invalidProxyTest.response.status, 400)
+
+    const updateInfo = await requestJson(baseUrl, '/api/admin/updates?proxyId=gh-proxy', {
       headers: { Cookie: adminCookie },
     })
     assert.equal(updateInfo.response.status, 200)
-    assert.equal(updateInfo.payload.data.currentRevision, currentRevision)
-    assert.equal(updateInfo.payload.data.latest.revision, revisions[0])
+    assert.equal(updateInfo.payload.data.proxyId, 'gh-proxy')
+    assert.equal(updateInfo.payload.data.currentVersion, currentVersion)
+    assert.equal(updateInfo.payload.data.latestVersion, 'v0.0.6')
     assert.equal(updateInfo.payload.data.hasUpdate, true)
+    assert.equal(updateInfo.payload.data.updateEnabled, true)
     assert.deepEqual(
-      updateInfo.payload.data.rollbackVersions.map((version) => version.revision),
-      [revisions[4], revisions[5], revisions[6]]
+      updateInfo.payload.data.rollbackVersions,
+      ['v0.0.3', 'v0.0.2', 'v0.0.0']
     )
+    assert.equal(updateFetchUrls.length, 2)
+    assert.ok(updateFetchUrls.every((url) => url.startsWith('https://gh-proxy.com/https://api.github.com/')))
+
+    const startUpdate = await requestJson(baseUrl, '/api/admin/update', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', version: 'v0.0.6', proxyId: 'gh-proxy' }),
+    })
+    assert.equal(startUpdate.response.status, 202)
+    assert.equal(startUpdate.payload.data.state, 'queued')
+    assert.equal(updateAgentCalls[0].url, 'http://update-agent.test/api/update')
+    assert.equal(updateAgentCalls[0].options.headers.Authorization, 'Bearer test-update-agent-secret')
+    assert.deepEqual(JSON.parse(updateAgentCalls[0].options.body), {
+      action: 'update',
+      version: 'v0.0.6',
+      fallbackVersion: 'v0.0.4',
+      proxyId: 'gh-proxy',
+    })
+
+    const operation = await requestJson(baseUrl, '/api/admin/update-operation?id=5a410ec7-945d-4f2c-8b95-751bd3a969a1', {
+      headers: { Cookie: adminCookie },
+    })
+    assert.equal(operation.response.status, 200)
+    assert.equal(operation.payload.data.state, 'completed')
+
+    const startRollback = await requestJson(baseUrl, '/api/admin/update', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'rollback', version: 'v0.0.3', proxyId: 'gh-proxy' }),
+    })
+    assert.equal(startRollback.response.status, 202)
+    assert.deepEqual(JSON.parse(updateAgentCalls[2].options.body), {
+      action: 'rollback',
+      version: 'v0.0.3',
+      fallbackVersion: 'v0.0.4',
+      proxyId: 'gh-proxy',
+    })
 
     const updateSettings = await requestJson(
       baseUrl,

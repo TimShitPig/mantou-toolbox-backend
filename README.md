@@ -26,7 +26,9 @@ sudo grep '^ADMIN_PASSWORD=' /opt/mantou-toolbox/.env
 
 管理会话有效期为 8 小时。正式使用请通过 HTTPS 反向代理访问后台。
 
-后台顶部的“更新”会检查当前镜像与最近成功构建的版本，并提供最新版和最多 3 个较早版本的更新/回退命令。复制后在服务器的 `/opt/mantou-toolbox` 目录执行，原 `.env` 和 `data` 会保留。
+后台顶部的“更新”会显示 `vX.X.X` 当前/最新版本。点击“立即更新”会自动拉取并重建后端容器；更新失败时会尝试恢复原版本。页面也会列出最多 3 个可回退版本。首次从旧部署升级时，先执行下面的服务器更新命令来安装更新助手；之后可直接在后台更新和回退。
+
+更新窗口可选择 GitHub 直连或 4 个内置加速地址并测试连通性。代理用于 GitHub API 检查；Docker 镜像本体仍从 GHCR 拉取。更新助手仅在内部 Docker 网络运行，通过随机密钥接受管理后台请求。
 
 检查服务：
 
@@ -39,7 +41,7 @@ curl http://127.0.0.1:8787/healthz
 
 ## 一键更新
 
-在原部署目录执行以下命令。更新脚本会比较运行容器的代码版本与 GitHub 最新版本；版本未变化时直接退出，不拉镜像也不重启容器。发现新版本后才拉取镜像并重建容器，`.env` 和 `data` 会保留：
+在原部署目录执行以下命令。更新脚本会比较运行容器的代码版本与 GitHub 最新版本；版本未变化且更新助手已运行时直接退出。旧部署首次执行会安装更新助手；发现新版本后拉取镜像并重建容器，`.env` 和 `data` 会保留：
 
 ```sh
 cd /opt/mantou-toolbox
@@ -52,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/m
 curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh | sudo env FORCE_UPDATE=true sh
 ```
 
-也可以克隆仓库后使用：
+第一次升级旧容器时，运行此命令会安装内部更新助手；之后更新和回退可从后台直接执行：
 
 ```sh
 sudo ./docker-update.sh
@@ -60,24 +62,23 @@ sudo ./docker-update.sh
 
 ## Docker Compose 部署
 
-克隆仓库后复制配置样例，再启动服务：
+克隆仓库并运行部署脚本：
 
 ```sh
 git clone https://github.com/TimShitPig/mantou-toolbox-backend.git
 cd mantou-toolbox-backend
-cp .env.docker.example .env
-docker compose up -d --build
+./deploy.sh
 ```
 
-Windows 可运行 `deploy.ps1`；Linux/macOS 可运行 `./deploy.sh`。Compose 会将数据库、头像和生成文件保存在 `mantou-storage` 命名卷中。
-使用 Compose 时，请在 `.env` 中设置随机 `APP_SECRET` 和 `ADMIN_PASSWORD`，否则管理面板会保持关闭。
+Windows 可运行 `deploy.ps1`。Compose 会将数据库、头像和生成文件保存在 `mantou-storage` 命名卷中，并使用内部更新助手支持后台更新。正式使用请在 `.env` 中设置 `APP_SECRET` 和 `ADMIN_PASSWORD`。
 
 ## 自动发布镜像
 
-GitHub Actions 会在 `main` 分支更新后构建并发布镜像：
+GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布镜像：
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.1
 ```
 
 工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。GHCR 镜像包为公开状态，无需执行 `docker login` 即可拉取。
