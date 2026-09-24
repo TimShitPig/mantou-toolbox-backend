@@ -11,7 +11,7 @@
 mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 
 # 下载并运行部署准备脚本
-curl -sSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/deploy/docker-deploy.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/deploy/docker-deploy.sh | bash
 
 # 启动服务并移除旧版助手容器
 docker compose up -d --remove-orphans
@@ -20,18 +20,17 @@ docker compose up -d --remove-orphans
 docker compose logs -f backend
 ```
 
-在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本只下载 Compose 配置，自动生成 `.env`、管理员密码和密钥；应用代码由 GHCR 镜像提供，不会克隆源代码。脚本会在终端显示管理员密码。Compose 只启动后端一个容器；`--remove-orphans` 会清理旧版更新助手容器，但保留 SQLite 命名卷中的数据。
+在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本下载 Compose 配置和源码，并将运行所需代码放到 `source/`；它也会自动生成 `.env`、管理员密码和密钥。终端会显示管理员密码。Compose 从本地源码构建，只启动一个后端容器；`--remove-orphans` 会清理旧版更新助手，SQLite 命名卷和现有密钥会保留。Node 基础镜像通过 DaoCloud 拉取。
 
-后台地址和管理员密码由准备脚本输出。部署后只有 `mantou-toolbox` 一个常驻容器。后台“更新”页可检查 `vX.X.X`，并复制指定版本的更新或回退命令；需要在服务器终端执行。Docker 镜像默认通过 `ghcr.nju.edu.cn` 代理拉取 GHCR 公共镜像。默认服务端口为 `8787`。
+后台地址和管理员密码由准备脚本输出。后台“更新”页可检查 `vX.X.X`，并复制指定版本的更新或回退命令；命令会下载对应源码、在本机重建，并在健康检查失败时恢复旧源码。更新命令需要在服务器终端执行。默认服务端口为 `8787`。
 
 ## 更新与回退
 
-后台更新页复制命令后，在服务器终端执行。更新会短暂重启后端；若新版本未能启动，可在页面选择旧版本并执行回退命令。也可手动更新当前 `.env` 指定的版本：
+后台更新页复制命令后，在服务器终端执行。也可直接指定版本：
 
 ```sh
 cd /root/mantou-toolbox-deploy
-docker compose pull backend
-docker compose up -d --no-deps --wait backend
+./update-source.sh v0.0.2
 ```
 
 ## 自动发布镜像
@@ -40,10 +39,10 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.1
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.2
 ```
 
-工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。GHCR 镜像包为公开状态，无需执行 `docker login` 即可拉取。
+工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。GHCR 镜像包仍公开发布；服务器一键部署使用 root 目录中的源码本地构建，不拉取 GHCR 应用镜像。
 
 ## 本地开发
 

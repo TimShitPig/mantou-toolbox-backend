@@ -317,13 +317,9 @@
 
   async function copyVersionCommand(action, version) {
     if (!updateInfo || !version) return
-    const repository = String(updateInfo.imageRepository || 'ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend')
-    const image = `${repository}:${version}`
     const command = [
       `cd ${shellQuote(updateInfo.deployDir || '/root/mantou-toolbox-deploy')}`,
-      `sed -i 's#^BACKEND_IMAGE=.*#BACKEND_IMAGE=${image}#' .env`,
-      'docker compose pull backend',
-      'docker compose up -d --no-deps --wait backend',
+      `./update-source.sh ${version}`,
     ].join(' && ')
 
     try {

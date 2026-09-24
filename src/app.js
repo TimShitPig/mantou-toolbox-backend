@@ -382,7 +382,6 @@ function createApp(options = {}) {
           latestVersion: latest && latest.version,
           hasUpdate: Boolean(latest && (!current || compareAppVersions(latest.version, current.version) > 0)),
           rollbackVersions: rollbackVersions.map((version) => version.version),
-          imageRepository: config.imageRepository,
           deployDir: config.deployDir,
         },
       }

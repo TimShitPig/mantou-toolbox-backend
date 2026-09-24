@@ -34,6 +34,7 @@ jobs:
       - name: Check deployment script syntax
         run: |
           sh -n deploy/docker-deploy.sh
+          sh -n deploy/update-source.sh
           docker compose config --quiet
           sh test/docker-deploy.test.sh
 

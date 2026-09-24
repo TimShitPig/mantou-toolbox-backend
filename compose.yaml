@@ -3,8 +3,14 @@ name: mantou-toolbox
 services:
   backend:
     container_name: mantou-toolbox
-    image: "${BACKEND_IMAGE:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest}"
-    pull_policy: always
+    image: mantou-toolbox-backend:local
+    pull_policy: build
+    build:
+      context: ./source
+      dockerfile: Dockerfile
+      args:
+        APP_BUILD_VERSION: "${APP_BUILD_VERSION:-unknown}"
+        NODE_BASE_IMAGE: "${NODE_BASE_IMAGE:-m.daocloud.io/docker.io/library/node:24-bookworm-slim}"
     restart: unless-stopped
     init: true
     ports:
@@ -16,7 +22,6 @@ services:
       APP_BASE_URL: "${APP_BASE_URL:-http://127.0.0.1:${PUBLIC_PORT:-8787}}"
       APP_SECRET: "${APP_SECRET:-change-this-secret-before-production}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
-      IMAGE_REPOSITORY: "${IMAGE_REPOSITORY:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend}"
       DEPLOY_DIR: "${DEPLOY_DIR:-${PWD:-/root/mantou-toolbox-deploy}}"
       CORS_ALLOW_ORIGIN: "${CORS_ALLOW_ORIGIN:-*}"
       ALLOW_DEVELOPMENT_LOGIN: "${ALLOW_DEVELOPMENT_LOGIN:-false}"

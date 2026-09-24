@@ -98,7 +98,6 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     adminPassword: 'integration-admin-password',
     appBuildVersion: currentVersion,
     deployDir: '/root/mantou-toolbox-deploy',
-    imageRepository: 'ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend',
     allowDevelopmentLogin: true,
   })
   const app = createApp({
@@ -147,8 +146,7 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     const adminScriptResponse = await fetch(new URL('/admin.js', baseUrl))
     assert.equal(adminScriptResponse.status, 200)
     const adminScript = await adminScriptResponse.text()
-    assert.match(adminScript, /docker compose pull backend/)
-    assert.match(adminScript, /--no-deps --wait backend/)
+    assert.match(adminScript, /update-source\.sh/)
     for (const page of ['novel', 'logs', 'data', 'ads', 'status']) {
       assert.match(adminMarkup, new RegExp(`data-page="${page}"`))
       assert.match(adminMarkup, new RegExp(`id="page-${page}"`))
@@ -354,7 +352,6 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(updateInfo.payload.data.latestVersion, 'v0.0.6')
     assert.equal(updateInfo.payload.data.hasUpdate, true)
     assert.equal(updateInfo.payload.data.deployDir, '/root/mantou-toolbox-deploy')
-    assert.equal(updateInfo.payload.data.imageRepository, 'ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend')
     assert.deepEqual(
       updateInfo.payload.data.rollbackVersions,
       ['v0.0.3', 'v0.0.2', 'v0.0.0']

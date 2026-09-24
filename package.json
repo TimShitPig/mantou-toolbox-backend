@@ -1,6 +1,6 @@
 {
   "name": "mantou-toolbox-backend",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "Zero-dependency Node backend for the Mantou Toolbox mini program.",
   "main": "server.js",

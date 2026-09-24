@@ -1,4 +1,5 @@
-FROM node:24-bookworm-slim
+ARG NODE_BASE_IMAGE=node:24-bookworm-slim
+FROM ${NODE_BASE_IMAGE}
 
 ARG APP_BUILD_VERSION=unknown
 
@@ -15,10 +16,6 @@ COPY package.json ./
 COPY server.js ./
 COPY src ./src
 COPY public ./public
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /app/storage/avatars /app/storage/downloads \
     && chown -R node:node /app

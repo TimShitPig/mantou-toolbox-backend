@@ -55,7 +55,6 @@ function createConfig(env = process.env, overrides = {}) {
     appBaseUrl,
     appBuildVersion: String(env.APP_BUILD_VERSION || '').trim(),
     deployDir: String(env.DEPLOY_DIR || '/root/mantou-toolbox-deploy').trim(),
-    imageRepository: String(env.IMAGE_REPOSITORY || 'ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend').trim().replace(/\/+$/, ''),
     appSecret: String(env.APP_SECRET || 'development-only-change-me').trim(),
     adminPassword: String(env.ADMIN_PASSWORD || '').trim(),
     corsAllowOrigin: String(env.CORS_ALLOW_ORIGIN || '*').trim(),
