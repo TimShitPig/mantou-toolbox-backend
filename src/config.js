@@ -37,6 +37,10 @@ function trimTrailingSlash(value) {
 
 function createConfig(env = process.env, overrides = {}) {
   const rootDir = path.resolve(__dirname, '..')
+  let sourceVersion = ''
+  try {
+    sourceVersion = String(require(path.join(rootDir, 'package.json')).version || '').trim()
+  } catch {}
   const mode = String(env.NODE_ENV || 'development').trim().toLowerCase()
   const host = String(env.HOST || '127.0.0.1').trim()
   const port = integer(env.PORT, 8787, 1)
@@ -53,8 +57,8 @@ function createConfig(env = process.env, overrides = {}) {
     avatarDir: path.resolve(env.AVATAR_DIR || path.join(storageDir, 'avatars')),
     downloadDir: path.resolve(env.DOWNLOAD_DIR || path.join(storageDir, 'downloads')),
     appBaseUrl,
-    appBuildVersion: String(env.APP_BUILD_VERSION || '').trim(),
-    deployDir: String(env.DEPLOY_DIR || '/root/mantou-toolbox-deploy').trim(),
+    appBuildVersion: sourceVersion ? `v${sourceVersion}` : String(env.APP_BUILD_VERSION || '').trim(),
+    selfUpdateEnabled: bool(env.MANTOU_SUPERVISED, false),
     appSecret: String(env.APP_SECRET || 'development-only-change-me').trim(),
     adminPassword: String(env.ADMIN_PASSWORD || '').trim(),
     corsAllowOrigin: String(env.CORS_ALLOW_ORIGIN || '*').trim(),

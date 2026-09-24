@@ -97,6 +97,8 @@ test('HTTP API workflow starts a real server and persists local state', async ()
   }]
   const updateFetchUrls = []
   const testedProxyUrls = []
+  const startedUpdates = []
+  let currentUpdateOperation = null
   const config = createConfig({}, {
     host: '127.0.0.1',
     port: 0,
@@ -108,11 +110,34 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     appSecret: 'test',
     adminPassword: 'integration-admin-password',
     appBuildVersion: currentVersion,
-    deployDir: '/root/mantou-toolbox-deploy',
+    selfUpdateEnabled: true,
     allowDevelopmentLogin: true,
   })
+  const updater = {
+    async start(input) {
+      startedUpdates.push(input)
+      currentUpdateOperation = {
+        operationId: 'd6407823-6cc6-495c-b52f-23d9e5818640',
+        ...input,
+        state: 'downloading',
+        message: `正在下载 ${input.version}`,
+        progress: null,
+      }
+      return currentUpdateOperation
+    },
+    async getOperation() {
+      return currentUpdateOperation
+    },
+    async claimTerminalLog() {
+      if (!currentUpdateOperation || currentUpdateOperation.terminalLogRecordedAt
+        || !['completed', 'rolled_back', 'failed'].includes(currentUpdateOperation.state)) return null
+      currentUpdateOperation.terminalLogRecordedAt = Date.now()
+      return currentUpdateOperation
+    },
+  }
   const app = createApp({
     config,
+    updater,
     updateFetchImpl: async (url) => {
       updateFetchUrls.push(String(url))
       return {
@@ -154,7 +179,9 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.match(adminMarkup, /id="update-dialog"/)
     assert.match(adminMarkup, /id="apply-update-button"/)
     assert.match(adminMarkup, /id="apply-rollback-button"/)
-    assert.match(adminMarkup, /复制更新命令/)
+    assert.match(adminMarkup, /立即更新/)
+    assert.match(adminMarkup, /立即回退/)
+    assert.doesNotMatch(adminMarkup, /复制更新命令/)
     assert.match(adminMarkup, /id="release-versions-body"/)
     assert.match(adminMarkup, /<th>版本<\/th>/)
     assert.match(adminMarkup, /id="release-notes-dialog"/)
@@ -168,7 +195,9 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     const adminScriptResponse = await fetch(new URL('/admin.js', baseUrl))
     assert.equal(adminScriptResponse.status, 200)
     const adminScript = await adminScriptResponse.text()
-    assert.match(adminScript, /update-source\.sh/)
+    assert.match(adminScript, /\/api\/admin\/update/)
+    assert.match(adminScript, /refreshUpdateOperation/)
+    assert.doesNotMatch(adminScript, /update-source\.sh/)
     assert.match(adminScript, /renderSystemLogs/)
     assert.match(adminScript, /renderVersionHistory/)
     assert.match(adminScript, /Promise\.all\(proxyRadios\.map/)
@@ -180,18 +209,20 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(anonymousAdmin.response.status, 401)
     const anonymousUpdateCheck = await requestJson(baseUrl, '/api/admin/updates')
     assert.equal(anonymousUpdateCheck.response.status, 401)
+    const anonymousUpdateOperation = await requestJson(baseUrl, '/api/admin/update-operation')
+    assert.equal(anonymousUpdateOperation.response.status, 401)
     const anonymousProxyTest = await requestJson(baseUrl, '/api/admin/proxies/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ proxyId: 'gh-proxy' }),
     })
     assert.equal(anonymousProxyTest.response.status, 401)
-    const removedUpdateRoute = await requestJson(baseUrl, '/api/admin/update', {
+    const anonymousUpdate = await requestJson(baseUrl, '/api/admin/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update', version: 'v2.2.0' }),
+      body: JSON.stringify({ action: 'update', version: 'v0.0.6' }),
     })
-    assert.equal(removedUpdateRoute.response.status, 404)
+    assert.equal(anonymousUpdate.response.status, 401)
 
     const unauthenticatedProfile = await requestJson(baseUrl, '/api/v1/auth/profile.php')
     assert.equal(unauthenticatedProfile.response.status, 401)
@@ -403,7 +434,6 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(updateInfo.payload.data.currentVersion, currentVersion)
     assert.equal(updateInfo.payload.data.latestVersion, 'v0.0.6')
     assert.equal(updateInfo.payload.data.hasUpdate, true)
-    assert.equal(updateInfo.payload.data.deployDir, '/root/mantou-toolbox-deploy')
     assert.equal(updateInfo.payload.data.versions.length, 6)
     assert.deepEqual(updateInfo.payload.data.versions[0], {
       version: 'v0.0.6',
@@ -420,6 +450,44 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     )
     assert.equal(updateFetchUrls.length, 3)
     assert.ok(updateFetchUrls.every((url) => url.startsWith('https://gh-proxy.com/https://api.github.com/')))
+
+    const invalidUpdateVersion = await requestJson(baseUrl, '/api/admin/update', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', version: 'v9.9.9', proxyId: 'gh-proxy' }),
+    })
+    assert.equal(invalidUpdateVersion.response.status, 400)
+    assert.equal(startedUpdates.length, 0)
+
+    const startUpdate = await requestJson(baseUrl, '/api/admin/update', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', version: 'v0.0.6', proxyId: 'gh-proxy' }),
+    })
+    assert.equal(startUpdate.response.status, 202)
+    assert.equal(startUpdate.payload.data.version, 'v0.0.6')
+    assert.equal(startedUpdates[0].archiveUrl, 'https://gh-proxy.com/https://github.com/TimShitPig/mantou-toolbox-backend/archive/refs/tags/v0.0.6.tar.gz')
+
+    const updateOperation = await requestJson(baseUrl, '/api/admin/update-operation', {
+      headers: { Cookie: adminCookie },
+    })
+    assert.equal(updateOperation.response.status, 200)
+    assert.equal(updateOperation.payload.data.operation.version, 'v0.0.6')
+    currentUpdateOperation.state = 'completed'
+    currentUpdateOperation.message = 'v0.0.6 已更新完成'
+    await requestJson(baseUrl, '/api/admin/update-operation', { headers: { Cookie: adminCookie } })
+    await requestJson(baseUrl, '/api/admin/update-operation', { headers: { Cookie: adminCookie } })
+    const updaterSummary = await requestJson(baseUrl, '/api/admin/summary', { headers: { Cookie: adminCookie } })
+    assert.equal(updaterSummary.payload.data.systemLogs.filter((entry) => entry.source === 'updater' && entry.message === 'v0.0.6 已更新完成').length, 1)
+
+    const startRollback = await requestJson(baseUrl, '/api/admin/update', {
+      method: 'POST',
+      headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'rollback', version: 'v0.0.3', proxyId: 'edgeone' }),
+    })
+    assert.equal(startRollback.response.status, 202)
+    assert.equal(startedUpdates[1].version, 'v0.0.3')
+    assert.equal(startedUpdates[1].archiveUrl, 'https://edgeone.gh-proxy.com/https://github.com/TimShitPig/mantou-toolbox-backend/archive/refs/tags/v0.0.3.tar.gz')
 
     const updateSettings = await requestJson(
       baseUrl,

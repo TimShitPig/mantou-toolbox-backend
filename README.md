@@ -13,25 +13,28 @@ mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 # 下载并运行部署准备脚本
 curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/deploy/docker-deploy.sh | bash
 
-# 启动服务并移除旧版助手容器
+# 启动单容器服务
 docker compose up -d --remove-orphans
 
 # 查看日志
 docker compose logs -f backend
 ```
 
-在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本下载 Compose 配置和源码，并将运行所需代码放到 `source/`；它也会自动生成 `.env`、管理员密码和密钥。终端会显示管理员密码。Compose 从本地源码构建，只启动一个后端容器；`--remove-orphans` 会清理旧版更新助手，SQLite 命名卷和现有密钥会保留。Node 基础镜像通过 DaoCloud 拉取。
+在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本下载 Compose 配置和运行源码到 `source/`，并自动生成 `.env`、管理员密码和密钥；终端会显示管理员密码。Compose 只启动一个后端容器，源码目录以可写挂载方式保留在 root 下，SQLite 命名卷和现有密钥会保留。Node 基础镜像通过 DaoCloud 拉取。
 
-后台地址和管理员密码由准备脚本输出。后台“更新”页可检查 `vX.X.X`，并复制指定版本的更新或回退命令；命令会下载对应源码、在本机重建，并在健康检查失败时恢复旧源码。更新命令需要在服务器终端执行。默认服务端口为 `8787`。
+后台地址和管理员密码由准备脚本输出。后台“更新”页可检查 `vX.X.X`，点击“立即更新”或“立即回退”后会由当前容器下载对应源码、校验版本并直接更新 root 下的 `source/`，随后重启后端进程并进行健康检查。检查失败时会自动恢复旧源码并再次启动旧版本。更新过程不会重建或拉取应用镜像，也不会增加容器；进度、完成和回退结果会显示在更新窗口，并记录在后台“运行日志”中。默认服务端口为 `8787`。
 
-## 更新与回退
+## 首次启用后台更新
 
-后台更新页复制命令后，在服务器终端执行。也可直接指定版本：
+旧部署若没有将 `source/` 挂载到 `/app`，需在服务器终端运行一次新版部署准备脚本，然后重建当前服务以启用容器内源码更新：
 
 ```sh
 cd /root/mantou-toolbox-deploy
-./update-source.sh v0.0.3
+curl -sSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/deploy/docker-deploy.sh | bash
+docker compose up -d --remove-orphans
 ```
+
+准备脚本会保留 `.env` 密钥和 SQLite 数据卷；之后的常规更新与回退都从后台页面点击完成。
 
 ## 自动发布镜像
 
@@ -39,10 +42,10 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.3
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.4
 ```
 
-工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。GHCR 镜像包仍公开发布；服务器一键部署使用 root 目录中的源码本地构建，不拉取 GHCR 应用镜像。
+工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。GHCR 镜像包仍公开发布；服务器首次部署时从源码构建基础运行容器，后台更新直接覆盖挂载源码，不会每次更新都构建新的本地镜像。
 
 ## 本地开发
 

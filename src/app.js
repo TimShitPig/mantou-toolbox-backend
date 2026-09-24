@@ -12,6 +12,7 @@ const {
 const { createAuth, AuthError } = require('./auth')
 const { createConfig } = require('./config')
 const { createDatabase } = require('./database')
+const { createSelfUpdater } = require('./self-updater')
 const {
   ApiError,
   corsHeaders,
@@ -277,6 +278,45 @@ function createApp(options = {}) {
     else console.info(output)
   }
 
+  const selfUpdater = options.updater || (config.selfUpdateEnabled
+    ? createSelfUpdater({
+      rootDir: config.rootDir,
+      storageDir: config.storageDir,
+      fetchImpl: updateFetch,
+      onState: (operation) => {
+        if (operation.state === 'failed') return
+        const level = operation.state === 'rolled_back' ? 'warn' : 'info'
+        recordSystemLog(level, 'updater', operation.message, {
+          method: 'SYSTEM',
+          path: '/api/admin/update',
+          meta: {
+            operationId: operation.operationId,
+            version: operation.version,
+            state: operation.state,
+            progress: operation.progress,
+          },
+        })
+      },
+    })
+    : null)
+
+  async function recordTerminalUpdateLog() {
+    if (!selfUpdater || typeof selfUpdater.claimTerminalLog !== 'function') return
+    const operation = await selfUpdater.claimTerminalLog()
+    if (!operation) return
+    const level = operation.state === 'failed' ? 'error' : (operation.state === 'rolled_back' ? 'warn' : 'info')
+    recordSystemLog(level, 'updater', operation.message, {
+      method: 'SYSTEM',
+      path: '/api/admin/update',
+      meta: {
+        operationId: operation.operationId,
+        version: operation.version,
+        state: operation.state,
+        progress: operation.progress,
+      },
+    })
+  }
+
   function getRuntimeConfig() {
     return { ...config, ...store.getAdminSettings() }
   }
@@ -335,6 +375,7 @@ function createApp(options = {}) {
   async function handleAdminSummary(req, res, origin) {
     assertMethod(req, 'GET')
     requireAdminSession(req)
+    await recordTerminalUpdateLog()
     const runtimeConfig = getRuntimeConfig()
     const summary = store.getAdminSummary(startOfUtcDay())
     sendJson(res, config, 200, {
@@ -442,7 +483,6 @@ function createApp(options = {}) {
             detailsUrl,
           })),
           rollbackVersions: rollbackVersions.map((version) => version.version),
-          deployDir: config.deployDir,
         },
       }
       updateCache.set(proxyId, cached)
@@ -458,6 +498,44 @@ function createApp(options = {}) {
     if (!Object.hasOwn(GITHUB_PROXIES, proxyId)) throw new ApiError(400, 'admin_proxy_invalid')
     const updateInfo = await getAdminUpdateInfo(proxyId)
     sendJson(res, config, 200, { data: updateInfo }, origin)
+  }
+
+  async function handleAdminUpdate(req, res, origin) {
+    assertMethod(req, 'POST')
+    requireAdminSession(req)
+    if (!selfUpdater || !config.selfUpdateEnabled) throw new ApiError(503, 'self_update_requires_supervisor')
+
+    const body = await readJson(req, 16 * 1024)
+    if (body.action !== 'update' && body.action !== 'rollback') throw new ApiError(400, 'admin_update_action_invalid')
+    const action = body.action === 'rollback' ? 'rollback' : 'update'
+    const version = String(body.version || '')
+    const proxyId = String(body.proxyId || 'gh-proxy')
+    if (!Object.hasOwn(GITHUB_PROXIES, proxyId)) throw new ApiError(400, 'admin_proxy_invalid')
+
+    const updateInfo = await getAdminUpdateInfo(proxyId)
+    const allowedVersion = action === 'update'
+      ? Boolean(updateInfo.hasUpdate && version === updateInfo.latestVersion)
+      : updateInfo.rollbackVersions.includes(version)
+    if (!allowedVersion) throw new ApiError(400, 'admin_update_version_not_available')
+
+    const operation = await selfUpdater.start({
+      action,
+      version,
+      proxyId,
+      currentVersion: updateInfo.currentVersion,
+      archiveUrl: proxyGithubUrl(`https://github.com/${UPDATE_REPOSITORY}/archive/refs/tags/${version}.tar.gz`, proxyId),
+    })
+    sendJson(res, config, 202, { data: operation }, origin)
+  }
+
+  async function handleAdminUpdateOperation(req, res, origin) {
+    assertMethod(req, 'GET')
+    requireAdminSession(req)
+    await recordTerminalUpdateLog()
+    const operation = selfUpdater ? await selfUpdater.getOperation() : null
+    sendJson(res, config, 200, {
+      data: { enabled: Boolean(selfUpdater && config.selfUpdateEnabled), operation },
+    }, origin)
   }
 
   async function handleAdminProxyTest(req, res, origin) {
@@ -846,6 +924,8 @@ function createApp(options = {}) {
       if (pathname === '/api/admin/logout') return await handleAdminLogout(req, res, origin)
       if (pathname === '/api/admin/summary') return await handleAdminSummary(req, res, origin)
       if (pathname === '/api/admin/updates') return await handleAdminUpdates(req, res, url, origin)
+      if (pathname === '/api/admin/update') return await handleAdminUpdate(req, res, origin)
+      if (pathname === '/api/admin/update-operation') return await handleAdminUpdateOperation(req, res, origin)
       if (pathname === '/api/admin/proxies/test') return await handleAdminProxyTest(req, res, origin)
       if (pathname === '/api/admin/settings') return await handleAdminSettings(req, res, origin)
       if (pathname === '/healthz') {

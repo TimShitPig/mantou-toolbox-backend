@@ -22,6 +22,9 @@
   for (const radio of proxyRadios) radio.checked = radio.value === updateProxyId
   let updateInfo = null
   let latestData = null
+  let updatePollTimer = null
+  let activeOperationId = ''
+  let lastKnownOperationState = ''
 
   const settingForms = {
     novel: {
@@ -256,7 +259,7 @@
     setText('available-version', info.latestVersion || '')
     document.getElementById('update-available').hidden = !info.hasUpdate
     setText('update-status', info.hasUpdate ? '有新版本可用' : '当前已是最新版本')
-    setMessage(document.getElementById('update-action-message'), '更新和回退需要在服务器终端执行。', '')
+    setMessage(document.getElementById('update-action-message'), '', '')
     document.getElementById('apply-update-button').disabled = !info.hasUpdate || !info.latestVersion
     renderVersionHistory(info.versions || [])
 
@@ -345,7 +348,10 @@
     select.disabled = true
     try {
       const info = await api(`/api/admin/updates?proxyId=${encodeURIComponent(requestedProxy)}`)
-      if (requestedProxy === updateProxyId) renderUpdateInfo(info)
+      if (requestedProxy === updateProxyId) {
+        renderUpdateInfo(info)
+        await refreshUpdateOperation()
+      }
     } catch (error) {
       if (requestedProxy !== updateProxyId) return
       setText('update-status', error.message === 'admin_login_required' ? '登录状态已过期' : '版本检查失败')
@@ -375,35 +381,95 @@
     await loadUpdateInfo()
   }
 
-  function shellQuote(value) {
-    return `'${String(value).replace(/'/g, "'\\''")}'`
+  function operationMessage(operation) {
+    if (operation.state === 'downloading') {
+      return operation.progress === null
+        ? `${operation.version} 正在下载源码…`
+        : `${operation.version} 正在下载源码… ${operation.progress}%`
+    }
+    return operation.message || ({
+      applying: '正在替换运行源码…',
+      restarting: '正在重启并检查服务…',
+      rolling_back: '新版本未通过检查，正在自动回退…',
+      completed: `${operation.version} 更新完成。`,
+      rolled_back: `已恢复到 ${operation.fallbackVersion}。`,
+      failed: '更新失败，当前版本未改变。',
+    })[operation.state] || '正在处理更新…'
   }
 
-  async function copyVersionCommand(action, version) {
-    if (!updateInfo || !version) return
-    const command = [
-      `cd ${shellQuote(updateInfo.deployDir || '/root/mantou-toolbox-deploy')}`,
-      `./update-source.sh ${version}`,
-    ].join(' && ')
-
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(command)
-      } else {
-        const input = document.createElement('textarea')
-        input.value = command
-        input.style.position = 'fixed'
-        input.style.opacity = '0'
-        document.body.appendChild(input)
-        input.select()
-        const copied = document.execCommand('copy')
-        input.remove()
-        if (!copied) throw new Error('clipboard_unavailable')
+  function renderUpdateOperation(operation) {
+    const updateButton = document.getElementById('apply-update-button')
+    const rollbackButton = document.getElementById('apply-rollback-button')
+    const active = operation && ['downloading', 'applying', 'restarting', 'rolling_back'].includes(operation.state)
+    lastKnownOperationState = operation.state
+    updateButton.disabled = Boolean(active) || !updateInfo || !updateInfo.hasUpdate || !updateInfo.latestVersion
+    rollbackButton.disabled = Boolean(active) || !updateInfo || !updateInfo.rollbackVersions.length
+    setMessage(
+      document.getElementById('update-action-message'),
+      operationMessage(operation),
+      operation.state === 'failed' ? 'error' : (['completed', 'rolled_back'].includes(operation.state) ? 'success' : '')
+    )
+    if (active) {
+      activeOperationId = operation.operationId
+      scheduleUpdatePoll()
+    } else if (activeOperationId === operation.operationId) {
+      activeOperationId = ''
+      if (updatePollTimer) clearTimeout(updatePollTimer)
+      updatePollTimer = null
+      if (['completed', 'rolled_back', 'failed'].includes(operation.state)) {
+        window.setTimeout(() => {
+          if (updateDialog.open) loadUpdateInfo()
+          refreshDashboard()
+        }, 1200)
       }
-      const label = action === 'rollback' ? '回退' : '更新'
-      setMessage(document.getElementById('update-action-message'), `${version} ${label}命令已复制。`, 'success')
-    } catch {
-      setMessage(document.getElementById('update-action-message'), '复制失败，请检查浏览器剪贴板权限。', 'error')
+    }
+  }
+
+  async function refreshUpdateOperation() {
+    try {
+      const result = await api('/api/admin/update-operation')
+      if (result.operation) renderUpdateOperation(result.operation)
+    } catch (error) {
+      if (['downloading', 'applying', 'restarting', 'rolling_back'].includes(lastKnownOperationState)) {
+        setMessage(document.getElementById('update-action-message'), '后端正在重启，等待服务恢复…', '')
+      } else if (error.message !== 'admin_login_required') {
+        setMessage(document.getElementById('update-action-message'), error.message, 'error')
+      }
+    }
+  }
+
+  function scheduleUpdatePoll() {
+    if (updatePollTimer) clearTimeout(updatePollTimer)
+    updatePollTimer = window.setTimeout(async () => {
+      updatePollTimer = null
+      await refreshUpdateOperation()
+      if (activeOperationId) scheduleUpdatePoll()
+    }, 1000)
+  }
+
+  async function applyVersion(action, version) {
+    if (!updateInfo || !version) return
+    const updateButton = document.getElementById('apply-update-button')
+    const rollbackButton = document.getElementById('apply-rollback-button')
+    updateButton.disabled = true
+    rollbackButton.disabled = true
+    setMessage(document.getElementById('update-action-message'), action === 'rollback' ? `正在准备回退到 ${version}…` : `正在准备更新到 ${version}…`, '')
+    try {
+      const operation = await api('/api/admin/update', {
+        method: 'POST',
+        body: JSON.stringify({ action, version, proxyId: updateProxyId }),
+      })
+      activeOperationId = operation.operationId
+      renderUpdateOperation(operation)
+    } catch (error) {
+      const message = ({
+        self_update_requires_supervisor: '请先运行新版部署准备脚本，再启动服务以启用后台更新。',
+        admin_update_version_not_available: '所选版本不再是可更新或可回退版本，请重新检查版本。',
+        update_already_in_progress: '已有更新任务正在运行。',
+      })[error.message] || error.message
+      setMessage(document.getElementById('update-action-message'), message, 'error')
+      updateButton.disabled = !updateInfo.hasUpdate
+      rollbackButton.disabled = !updateInfo.rollbackVersions.length
     }
   }
 
@@ -514,12 +580,12 @@
   })
   document.getElementById('apply-update-button').addEventListener('click', () => {
     if (updateInfo && updateInfo.latestVersion && updateInfo.hasUpdate) {
-      copyVersionCommand('update', updateInfo.latestVersion)
+      applyVersion('update', updateInfo.latestVersion)
     }
   })
   document.getElementById('apply-rollback-button').addEventListener('click', () => {
     const version = document.getElementById('rollback-version').value
-    if (updateInfo && updateInfo.rollbackVersions.includes(version)) copyVersionCommand('rollback', version)
+    if (updateInfo && updateInfo.rollbackVersions.includes(version)) applyVersion('rollback', version)
   })
   document.getElementById('refresh-button').addEventListener('click', refreshDashboard)
   document.getElementById('logout-button').addEventListener('click', async () => {
