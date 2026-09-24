@@ -1,6 +1,8 @@
 ARG NODE_BASE_IMAGE=node:24-bookworm-slim
 FROM ${NODE_BASE_IMAGE}
 
+ARG APT_MIRROR=mirrors.aliyun.com
+
 WORKDIR /app
 
 ENV NODE_ENV=production \
@@ -16,7 +18,8 @@ COPY src ./src
 COPY public ./public
 
 USER root
-RUN apt-get update \
+RUN sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tar \
     && rm -rf /var/lib/apt/lists/*
 

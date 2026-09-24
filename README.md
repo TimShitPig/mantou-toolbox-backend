@@ -20,7 +20,7 @@ docker compose up -d --remove-orphans
 docker compose logs -f backend
 ```
 
-在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本下载 Compose 配置和运行源码到 `source/`，并自动生成 `.env`、管理员密码和密钥；终端会显示管理员密码。Compose 只启动一个后端容器，源码目录以可写挂载方式保留在 root 下，SQLite 命名卷和现有密钥会保留。Node 基础镜像通过 DaoCloud 拉取。
+在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本下载 Compose 配置和运行源码到 `source/`，并自动生成 `.env`、管理员密码和密钥；终端会显示管理员密码。Compose 只启动一个后端容器，源码目录以可写挂载方式保留在 root 下，SQLite 命名卷和现有密钥会保留。Node 基础镜像通过 DaoCloud 拉取，Debian 软件包通过阿里云镜像拉取。
 
 后台地址和管理员密码由准备脚本输出。后台“更新”页可检查 `vX.X.X`，点击“立即更新”或“立即回退”后会由当前容器下载对应源码、校验版本并直接更新 root 下的 `source/`，随后重启后端进程并进行健康检查。检查失败时会自动恢复旧源码并再次启动旧版本。更新过程不会重建或拉取应用镜像，也不会增加容器；进度、完成和回退结果会显示在更新窗口，并记录在后台“运行日志”中。默认服务端口为 `8787`。
 

@@ -9,6 +9,7 @@ services:
       context: ./source
       dockerfile: Dockerfile
       args:
+        APT_MIRROR: "${APT_MIRROR:-mirrors.aliyun.com}"
         NODE_BASE_IMAGE: "${NODE_BASE_IMAGE:-m.daocloud.io/docker.io/library/node:24-bookworm-slim}"
     restart: unless-stopped
     init: true
