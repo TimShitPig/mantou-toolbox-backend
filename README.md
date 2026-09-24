@@ -4,73 +4,35 @@
 
 ## 服务器一键部署
 
-服务器需要先安装 Docker。执行下面一条命令即可部署：
+以 `root` 用户 SSH 登录服务器，确认已安装 Docker Compose v2，然后执行：
 
 ```sh
-sudo mkdir -p /opt/mantou-toolbox && cd /opt/mantou-toolbox && curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-run.sh | sudo sh
+# 创建部署目录
+mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
+
+# 下载并运行部署准备脚本
+curl -sSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/deploy/docker-deploy.sh | bash
+
+# 启动服务
+docker compose up -d
+
+# 查看日志
+docker compose logs -f backend
 ```
 
-脚本会自动拉取镜像并启动容器。首次运行会创建 `.env`、数据目录和内容目录，生成随机 `APP_SECRET`，并探测服务器公网 IPv4 来设置 `APP_BASE_URL`。配置文件权限为仅 root 可读写，无需手工填写服务器 IP 或随机密钥。脚本也会将数据目录权限调整为容器运行用户可写，避免 SQLite 无法打开数据库。
+在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本只下载 Compose 配置，自动生成 `.env`、管理员密码和密钥；应用代码由 GHCR 镜像提供，不会克隆源代码。脚本会在终端显示管理员密码。SQLite 数据保存在 Docker 命名卷中，重建容器不会删除数据。
 
-后台管理页地址为 `APP_BASE_URL/admin`。首次部署会自动生成管理员口令并保存到 `.env`，脚本会打印读取命令：
-
-```sh
-sudo grep '^ADMIN_PASSWORD=' /opt/mantou-toolbox/.env
-```
-
-更新部署会保留原管理员口令、服务器地址和端口。
-
-微信 AppID 会从本项目配置自动写入。微信 AppSecret 由微信公众平台单独发放，不能自动生成；未配置时服务仍会部署并提供下载接口，微信资料登录保持关闭。需要登录时再将 AppSecret 写入 `/opt/mantou-toolbox/.env` 并重启容器。
-
-后台面板支持服务总开关、解析开关、七猫/番茄来源开关、每日下载上限、激励广告和直链设置；同时显示用户数、下载任务和客户端错误日志。
-
-管理会话有效期为 8 小时。正式使用请通过 HTTPS 反向代理访问后台。
-
-后台顶部的“更新”会显示 `vX.X.X` 当前/最新版本。点击“立即更新”会自动拉取并重建后端容器；更新失败时会尝试恢复原版本。页面也会列出最多 3 个可回退版本。首次从旧部署升级时，先执行下面的服务器更新命令来安装更新助手；之后可直接在后台更新和回退。
-
-更新窗口可选择 GitHub 直连或 4 个内置加速地址并测试连通性。代理用于 GitHub API 检查；Docker 镜像本体仍从 GHCR 拉取。更新助手仅在内部 Docker 网络运行，通过随机密钥接受管理后台请求。
-
-检查服务：
-
-```sh
-sudo docker ps
-curl http://127.0.0.1:8787/healthz
-```
-
-服务器防火墙还需要放行 TCP `8787`。如果公网 IP 探测失败，脚本会使用本机回环地址并提示；此时将 `/opt/mantou-toolbox/.env` 中的 `APP_BASE_URL` 改成服务器公网 IP 或域名。小程序正式环境应配置 HTTPS 域名和微信合法请求域名。
+后台地址和管理员密码由准备脚本输出。新安装已包含更新助手；后台“更新”页可检查 `vX.X.X`、一键更新和回退。GitHub 加速地址用于版本检查，镜像由 Docker 从 GHCR 拉取。默认服务端口为 `8787`。
 
 ## 一键更新
 
-在原部署目录执行以下命令。更新脚本会比较运行容器的代码版本与 GitHub 最新版本；版本未变化且更新助手已运行时直接退出。旧部署首次执行会安装更新助手；发现新版本后拉取镜像并重建容器，`.env` 和 `data` 会保留：
+新部署直接在后台点击“立即更新”。命令行更新可在部署目录执行：
 
 ```sh
-cd /opt/mantou-toolbox
-curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh | sudo sh
+cd /root/mantou-toolbox-deploy
+docker compose pull
+docker compose up -d
 ```
-
-需要强制重拉并重建时，设置 `FORCE_UPDATE=true`：
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/docker-update.sh | sudo env FORCE_UPDATE=true sh
-```
-
-第一次升级旧容器时，运行此命令会安装内部更新助手；之后更新和回退可从后台直接执行：
-
-```sh
-sudo ./docker-update.sh
-```
-
-## Docker Compose 部署
-
-克隆仓库并运行部署脚本：
-
-```sh
-git clone https://github.com/TimShitPig/mantou-toolbox-backend.git
-cd mantou-toolbox-backend
-./deploy.sh
-```
-
-Windows 可运行 `deploy.ps1`。Compose 会将数据库、头像和生成文件保存在 `mantou-storage` 命名卷中，并使用内部更新助手支持后台更新。正式使用请在 `.env` 中设置 `APP_SECRET` 和 `ADMIN_PASSWORD`。
 
 ## 自动发布镜像
 

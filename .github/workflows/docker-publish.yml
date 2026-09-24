@@ -33,7 +33,7 @@ jobs:
 
       - name: Check deployment script syntax
         run: |
-          for script in docker-run.sh docker-update.sh deploy.sh update.sh; do
+          for script in docker-run.sh docker-update.sh deploy/docker-deploy.sh deploy.sh update.sh; do
             sh -n "$script"
           done
           sh test/docker-deploy.test.sh

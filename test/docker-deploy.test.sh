@@ -10,6 +10,21 @@ mkdir -p "$TEMP_ROOT/bin" "$TEMP_ROOT/server"
 cat > "$TEMP_ROOT/bin/curl" <<'EOF'
 #!/usr/bin/env sh
 case "$*" in
+  *raw.githubusercontent.com*compose.yaml*)
+    output=''
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = '-o' ]; then
+        shift
+        output="$1"
+      fi
+      shift
+    done
+    if [ -n "${COMPOSE_FIXTURE:-}" ]; then
+      cp "$COMPOSE_FIXTURE" "$output"
+    else
+      printf '%s\n' 'name: mantou-toolbox' 'services:' '  backend:' '    image: test/image:latest' > "$output"
+    fi
+    ;;
   *api.github.com*)
     printf '%s\n' "$*" >> "${CURL_CALLS:-/dev/null}"
     printf '%s\n' '{"sha": "0123456789abcdef0123456789abcdef01234567"}'
@@ -20,6 +35,10 @@ EOF
 
 cat > "$TEMP_ROOT/bin/docker" <<'EOF'
 #!/usr/bin/env sh
+if [ "$1" = 'compose' ] && [ "$2" = 'version' ]; then
+  printf '%s\n' 'Docker Compose version v2.30.0'
+  exit 0
+fi
 if [ "$1" = 'inspect' ]; then
   case "$*" in
     *'.State.Running'*)
@@ -140,5 +159,39 @@ MIGRATED_SECRET="$(sed -n 's/^APP_SECRET=//p' "$TEMP_ROOT/legacy/.env")"
 [ "${#MIGRATED_ADMIN_PASSWORD}" -eq 64 ]
 [ "$MIGRATED_SECRET" = "$OLD_SECRET" ]
 assert_private_file "$TEMP_ROOT/legacy/.env"
+
+mkdir -p "$TEMP_ROOT/prepare"
+(
+  cd "$TEMP_ROOT/prepare"
+  PATH="$TEMP_ROOT/bin:$PATH" \
+    DOCKER_CALLS="$TEMP_ROOT/docker-calls-prepare" \
+    COMPOSE_FIXTURE="$ROOT/compose.yaml" \
+    RAW_BASE=https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main \
+    sh "$ROOT/deploy/docker-deploy.sh"
+)
+PREPARED_ENV="$TEMP_ROOT/prepare/.env"
+[ -s "$TEMP_ROOT/prepare/compose.yaml" ]
+[ -d "$TEMP_ROOT/prepare/content" ]
+grep -Fqx 'PUBLIC_PORT=8787' "$PREPARED_ENV"
+grep -Fqx 'APP_BASE_URL=http://198.51.100.27:8787' "$PREPARED_ENV"
+grep -Fqx 'BACKEND_IMAGE=ghcr.io/timshitpig/mantou-toolbox-backend:latest' "$PREPARED_ENV"
+grep -Fqx 'UPDATE_AGENT_IMAGE=ghcr.io/timshitpig/mantou-toolbox-backend:latest' "$PREPARED_ENV"
+grep -Fqx "UPDATE_DEPLOY_DIR=$TEMP_ROOT/prepare" "$PREPARED_ENV"
+[ "$(sed -n 's/^APP_SECRET=//p' "$PREPARED_ENV" | wc -c | tr -d ' ')" -eq 65 ]
+[ "$(sed -n 's/^ADMIN_PASSWORD=//p' "$PREPARED_ENV" | wc -c | tr -d ' ')" -eq 65 ]
+[ "$(sed -n 's/^UPDATE_AGENT_SECRET=//p' "$PREPARED_ENV" | wc -c | tr -d ' ')" -eq 65 ]
+assert_private_file "$PREPARED_ENV"
+BEFORE_PREPARED_ENV="$(sha256sum "$PREPARED_ENV" | cut -d' ' -f1)"
+(
+  cd "$TEMP_ROOT/prepare"
+  PATH="$TEMP_ROOT/bin:$PATH" \
+    DOCKER_CALLS="$TEMP_ROOT/docker-calls-prepare-rerun" \
+    COMPOSE_FIXTURE="$ROOT/compose.yaml" \
+    RAW_BASE=https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main \
+    sh "$ROOT/deploy/docker-deploy.sh"
+)
+AFTER_PREPARED_ENV="$(sha256sum "$PREPARED_ENV" | cut -d' ' -f1)"
+[ "$BEFORE_PREPARED_ENV" = "$AFTER_PREPARED_ENV" ]
+grep -Fq 'pull_policy: always' "$TEMP_ROOT/prepare/compose.yaml"
 
 printf '%s\n' 'deployment config generation and update preservation passed'

@@ -5,12 +5,6 @@ cd "$(dirname "$0")"
 UPDATE_DEPLOY_DIR="${UPDATE_DEPLOY_DIR:-$PWD}"
 export UPDATE_DEPLOY_DIR
 
-if command -v git >/dev/null 2>&1 \
-  && [ "$(git status --porcelain 2>/dev/null || printf 'unknown')" = '' ]; then
-  APP_BUILD_REVISION="$(git rev-parse HEAD 2>/dev/null || printf 'unknown')"
-  export APP_BUILD_REVISION
-fi
-
 if [ ! -f .env ]; then
   cp .env.docker.example .env
   printf '%s\n' 'Created .env from .env.docker.example. Review APP_SECRET before production use.'
@@ -34,15 +28,8 @@ if [ -z "$SAVED_UPDATE_AGENT_SECRET" ]; then
   chmod 600 .env
 fi
 
-APP_BUILD_VERSION="v$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1)"
-export APP_BUILD_VERSION
-
-if grep -Eq '^[[:space:]]*BACKEND_IMAGE[[:space:]]*=' .env; then
-  docker compose pull
-  docker compose up -d --no-build --remove-orphans
-else
-  docker compose up -d --build --remove-orphans
-fi
+docker compose pull
+docker compose up -d --no-build --remove-orphans
 
 docker compose ps
 printf '%s\n' 'Backend URL: http://127.0.0.1:8787'
