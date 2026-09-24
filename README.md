@@ -13,25 +13,25 @@ mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 # 下载并运行部署准备脚本
 curl -sSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/deploy/docker-deploy.sh | bash
 
-# 启动服务
-docker compose up -d
+# 启动服务并移除旧版助手容器
+docker compose up -d --remove-orphans
 
 # 查看日志
 docker compose logs -f backend
 ```
 
-在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本只下载 Compose 配置，自动生成 `.env`、管理员密码和密钥；应用代码由 GHCR 镜像提供，不会克隆源代码。脚本会在终端显示管理员密码。SQLite 数据保存在 Docker 命名卷中，重建容器不会删除数据。
+在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本只下载 Compose 配置，自动生成 `.env`、管理员密码和密钥；应用代码由 GHCR 镜像提供，不会克隆源代码。脚本会在终端显示管理员密码。Compose 只启动后端一个容器；`--remove-orphans` 会清理旧版更新助手容器，但保留 SQLite 命名卷中的数据。
 
-后台地址和管理员密码由准备脚本输出。新安装已包含更新助手；后台“更新”页可检查 `vX.X.X`、一键更新和回退。Docker 镜像默认通过 `ghcr.nju.edu.cn` 代理拉取 GHCR 公共镜像。默认服务端口为 `8787`。
+后台地址和管理员密码由准备脚本输出。部署后只有 `mantou-toolbox` 一个常驻容器。后台“更新”页可检查 `vX.X.X`，并复制指定版本的更新或回退命令；需要在服务器终端执行。Docker 镜像默认通过 `ghcr.nju.edu.cn` 代理拉取 GHCR 公共镜像。默认服务端口为 `8787`。
 
-## 一键更新
+## 更新与回退
 
-新部署直接在后台点击“立即更新”。命令行更新可在部署目录执行：
+后台更新页复制命令后，在服务器终端执行。更新会短暂重启后端；若新版本未能启动，可在页面选择旧版本并执行回退命令。也可手动更新当前 `.env` 指定的版本：
 
 ```sh
 cd /root/mantou-toolbox-deploy
-docker compose pull
-docker compose up -d
+docker compose pull backend
+docker compose up -d --no-deps --wait backend
 ```
 
 ## 自动发布镜像

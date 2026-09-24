@@ -4,16 +4,9 @@
 storage
 coverage
 test
-verification
 node_modules
 Dockerfile
 compose.yaml
-docker-compose.yml
-deploy.ps1
-deploy.sh
-update.ps1
-update.sh
-docker-run.sh
 deploy/
 README.md
 *.sqlite

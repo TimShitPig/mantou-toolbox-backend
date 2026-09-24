@@ -247,7 +247,6 @@ function createApp(options = {}) {
   const auth = options.auth || createAuth(store, config, options.fetchImpl)
   const updateFetch = options.updateFetchImpl || options.fetchImpl || globalThis.fetch
   const proxyFetch = options.proxyFetchImpl || options.fetchImpl || globalThis.fetch
-  const updateAgentFetch = options.updateAgentFetchImpl || options.fetchImpl || globalThis.fetch
   let server = null
   let closed = false
   const updateCache = new Map()
@@ -383,7 +382,8 @@ function createApp(options = {}) {
           latestVersion: latest && latest.version,
           hasUpdate: Boolean(latest && (!current || compareAppVersions(latest.version, current.version) > 0)),
           rollbackVersions: rollbackVersions.map((version) => version.version),
-          updateEnabled: Boolean(config.updateAgentUrl && config.updateAgentSecret),
+          imageRepository: config.imageRepository,
+          deployDir: config.deployDir,
         },
       }
       updateCache.set(proxyId, cached)
@@ -401,71 +401,6 @@ function createApp(options = {}) {
     sendJson(res, config, 200, { data: updateInfo }, origin)
   }
 
-  async function callUpdateAgent(pathname, options = {}) {
-    if (!config.updateAgentUrl || !config.updateAgentSecret) {
-      throw new ApiError(503, 'update_agent_unavailable')
-    }
-    let response
-    try {
-      response = await updateAgentFetch(new URL(pathname, `${config.updateAgentUrl}/`), {
-        method: options.method || 'GET',
-        headers: {
-          Authorization: `Bearer ${config.updateAgentSecret}`,
-          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        },
-        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-        signal: AbortSignal.timeout(8000),
-      })
-    } catch {
-      throw new ApiError(503, 'update_agent_unavailable')
-    }
-    let payload = {}
-    try { payload = await response.json() } catch {}
-    if (!response.ok) {
-      const statusCode = response.status === 409 ? 409 : (response.status >= 400 && response.status < 500 ? 400 : 502)
-      throw new ApiError(statusCode, payload.error || 'update_agent_failed')
-    }
-    return payload.data
-  }
-
-  async function handleAdminUpdate(req, res, origin) {
-    requireAdminSession(req)
-    assertMethod(req, 'POST')
-    const body = await readJson(req, 16 * 1024)
-    const action = String(body.action || 'update')
-    const target = parseAppVersion(body.version)
-    const proxyId = String(body.proxyId || 'gh-proxy')
-    if (!['update', 'rollback'].includes(action) || !target || !Object.hasOwn(GITHUB_PROXIES, proxyId)) {
-      throw new ApiError(400, 'update_target_invalid')
-    }
-    const updateInfo = await getAdminUpdateInfo(proxyId)
-    if (action === 'update' && (!updateInfo.hasUpdate || updateInfo.latestVersion !== target.version)) {
-      throw new ApiError(409, 'update_version_unavailable')
-    }
-    if (action === 'rollback' && !updateInfo.rollbackVersions.includes(target.version)) {
-      throw new ApiError(400, 'rollback_version_unavailable')
-    }
-    const result = await callUpdateAgent('/api/update', {
-      method: 'POST',
-      body: {
-        action,
-        version: target.version,
-        fallbackVersion: updateInfo.currentVersion || '',
-        proxyId,
-      },
-    })
-    sendJson(res, config, 202, { data: result }, origin)
-  }
-
-  async function handleAdminUpdateOperation(req, res, url, origin) {
-    assertMethod(req, 'GET')
-    requireAdminSession(req)
-    const operationId = url.searchParams.get('id') || ''
-    if (!/^[a-f0-9-]{36}$/.test(operationId)) throw new ApiError(400, 'update_operation_invalid')
-    const result = await callUpdateAgent(`/api/operations/${operationId}`)
-    sendJson(res, config, 200, { data: result }, origin)
-  }
-
   async function handleAdminProxyTest(req, res, origin) {
     assertMethod(req, 'POST')
     requireAdminSession(req)
@@ -480,15 +415,15 @@ function createApp(options = {}) {
     let connected = false
     try {
       const response = await proxyFetch(
-        proxyGithubUrl(`https://raw.githubusercontent.com/${UPDATE_REPOSITORY}/main/docker-update.sh`, proxyId),
+        proxyGithubUrl(`https://api.github.com/repos/${UPDATE_REPOSITORY}/tags?per_page=1`, proxyId),
         {
-          headers: { Accept: 'text/plain', 'User-Agent': 'mantou-toolbox-proxy-test' },
+          headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'mantou-toolbox-proxy-test' },
           signal: AbortSignal.timeout(8000),
         }
       )
       statusCode = response.status
-      const script = await response.text()
-      connected = response.ok && script.includes('set -eu') && script.includes('docker pull')
+      const tags = response.ok ? await response.json() : null
+      connected = response.ok && Array.isArray(tags)
     } catch {}
 
     sendJson(res, config, 200, {
@@ -840,8 +775,6 @@ function createApp(options = {}) {
       if (pathname === '/api/admin/logout') return await handleAdminLogout(req, res, origin)
       if (pathname === '/api/admin/summary') return await handleAdminSummary(req, res, origin)
       if (pathname === '/api/admin/updates') return await handleAdminUpdates(req, res, url, origin)
-      if (pathname === '/api/admin/update') return await handleAdminUpdate(req, res, origin)
-      if (pathname === '/api/admin/update-operation') return await handleAdminUpdateOperation(req, res, url, origin)
       if (pathname === '/api/admin/proxies/test') return await handleAdminProxyTest(req, res, origin)
       if (pathname === '/api/admin/settings') return await handleAdminSettings(req, res, origin)
       if (pathname === '/healthz') {
