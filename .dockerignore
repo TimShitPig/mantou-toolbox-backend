@@ -14,7 +14,6 @@ deploy.sh
 update.ps1
 update.sh
 docker-run.sh
-docker-update.sh
 README.md
 *.sqlite
 *.sqlite-shm
