@@ -106,6 +106,15 @@
     }).format(new Date(timestamp))
   }
 
+  function formatReleaseDate(value) {
+    const date = new Date(value)
+    if (!value || Number.isNaN(date.getTime())) return '—'
+    return new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).format(date)
+  }
+
   function setText(id, value) {
     document.getElementById(id).textContent = String(value)
   }
@@ -150,13 +159,13 @@
     }
   }
 
-  function renderLogs(items) {
+  function renderSystemLogs(items) {
     const body = document.getElementById('logs-body')
     body.replaceChildren()
     document.getElementById('log-count').textContent = `最近 ${items.length} 条`
     if (!items.length) {
       const row = document.createElement('tr')
-      appendCell(row, '暂无日志', 'empty-cell').colSpan = 5
+      appendCell(row, '暂无运行日志', 'empty-cell').colSpan = 6
       body.appendChild(row)
       return
     }
@@ -165,9 +174,12 @@
       const level = appendCell(row, String(item.level || 'info').toUpperCase())
       if (item.level === 'error') level.className = 'level-error'
       if (item.level === 'warn') level.className = 'level-warn'
-      appendCell(row, item.scope || 'client', 'cell-muted')
+      appendCell(row, item.source || 'server', 'cell-muted')
+      appendCell(row, item.method ? `${item.method} ${item.path || ''}` : (item.path || '—'), 'cell-muted')
+      const statusCode = appendCell(row, item.statusCode || '—', 'cell-muted')
+      if (item.statusCode >= 500) statusCode.className = 'cell-error'
+      else if (item.statusCode >= 400) statusCode.className = 'level-warn'
       appendCell(row, item.message || '—')
-      appendCell(row, item.userId || '访客', 'cell-muted')
       appendCell(row, formatDate(item.createdAt), 'cell-muted')
       body.appendChild(row)
     }
@@ -198,7 +210,7 @@
       showDashboard()
       renderMetrics(latestData.metrics || {})
       renderJobs(latestData.jobs || [])
-      renderLogs(latestData.logs || [])
+      renderSystemLogs(latestData.systemLogs || [])
       renderSettings(latestData.settings || {})
       setText('status-updated-at', formatDate(latestData.generatedAt))
       for (const group of Object.values(settingForms)) {
@@ -246,6 +258,7 @@
     setText('update-status', info.hasUpdate ? '有新版本可用' : '当前已是最新版本')
     setMessage(document.getElementById('update-action-message'), '更新和回退需要在服务器终端执行。', '')
     document.getElementById('apply-update-button').disabled = !info.hasUpdate || !info.latestVersion
+    renderVersionHistory(info.versions || [])
 
     const select = document.getElementById('rollback-version')
     select.replaceChildren()
@@ -265,6 +278,56 @@
     document.getElementById('apply-rollback-button').disabled = !info.rollbackVersions.length
   }
 
+  function renderVersionHistory(versions, emptyText = '暂无版本记录') {
+    const body = document.getElementById('release-versions-body')
+    const count = document.getElementById('release-count')
+    body.replaceChildren()
+    count.textContent = versions.length ? `共 ${versions.length} 个版本` : emptyText
+    if (!versions.length) {
+      const row = document.createElement('tr')
+      appendCell(row, emptyText, 'empty-cell').colSpan = 3
+      body.appendChild(row)
+      return
+    }
+
+    for (const version of versions) {
+      const row = document.createElement('tr')
+      const versionCell = appendCell(row, '')
+      const versionLabel = document.createElement('span')
+      versionLabel.className = 'release-version-label'
+      const versionName = document.createElement('span')
+      versionName.textContent = version.version
+      versionLabel.appendChild(versionName)
+      if (version.prerelease) {
+        const badge = document.createElement('span')
+        badge.className = 'release-prerelease'
+        badge.textContent = '预发布'
+        versionLabel.appendChild(badge)
+      }
+      versionCell.appendChild(versionLabel)
+
+      appendCell(row, formatReleaseDate(version.publishedAt), 'cell-muted')
+      const contentCell = appendCell(row, '')
+      const viewButton = document.createElement('button')
+      viewButton.className = 'button button-secondary release-view-button'
+      viewButton.type = 'button'
+      viewButton.textContent = '查看'
+      viewButton.addEventListener('click', () => showReleaseNotes(version))
+      contentCell.appendChild(viewButton)
+      body.appendChild(row)
+    }
+  }
+
+  function showReleaseNotes(version) {
+    setText('release-notes-title', `版本 ${version.version}`)
+    setText('release-notes-date', `发布时间：${formatReleaseDate(version.publishedAt)}`)
+    setText('release-notes-body', version.content || '暂无更新说明。可打开该版本提交查看代码差异。')
+    const link = document.getElementById('release-details-link')
+    link.href = version.detailsUrl || `https://github.com/TimShitPig/mantou-toolbox-backend/releases/tag/${encodeURIComponent(version.version)}`
+    link.hidden = !version.detailsUrl
+    document.getElementById('release-notes-dialog').showModal()
+  }
+
   async function loadUpdateInfo() {
     const requestedProxy = updateProxyId
     updateInfo = null
@@ -276,6 +339,7 @@
     setMessage(document.getElementById('update-action-message'), '', '')
     document.getElementById('apply-update-button').disabled = true
     document.getElementById('apply-rollback-button').disabled = true
+    renderVersionHistory([], '读取中')
     const select = document.getElementById('rollback-version')
     select.replaceChildren(new Option('读取中…', ''))
     select.disabled = true
@@ -289,6 +353,7 @@
         update_check_failed: '读取 GitHub 版本信息失败，请稍后重试。',
         admin_login_required: '登录状态已过期，请重新登录。',
       })[error.message] || error.message
+      renderVersionHistory([], '版本记录读取失败')
       select.replaceChildren(new Option('暂无可回退版本', ''))
       setMessage(document.getElementById('update-action-message'), message, 'error')
     }
@@ -302,7 +367,6 @@
     setText('available-version', '')
     document.getElementById('update-available').hidden = true
     setMessage(document.getElementById('update-action-message'), '', '')
-    setMessage(document.getElementById('proxy-test-status'), '', '')
     document.getElementById('apply-update-button').disabled = true
     document.getElementById('apply-rollback-button').disabled = true
     const select = document.getElementById('rollback-version')
@@ -343,24 +407,55 @@
     }
   }
 
-  async function testSelectedProxy() {
-    const button = document.getElementById('proxy-test-button')
-    const status = document.getElementById('proxy-test-status')
-    const testedProxy = updateProxyId
-    button.disabled = true
-    setMessage(status, '正在测试…', '')
+  function renderProxyResult(proxyId, state, result = {}) {
+    const output = [...document.querySelectorAll('.proxy-result')]
+      .find((element) => element.dataset.proxyResult === proxyId)
+    if (!output) return
+    output.replaceChildren()
+
+    const addBadge = (text, className) => {
+      const badge = document.createElement('span')
+      badge.className = `proxy-result-badge ${className}`
+      badge.textContent = text
+      output.appendChild(badge)
+    }
+
+    if (state === 'pending') {
+      addBadge('测试中', 'proxy-result-pending')
+      output.setAttribute('aria-label', '正在测试连通性')
+      return
+    }
+
+    if (result.connected) {
+      addBadge('可用', 'proxy-result-available')
+      addBadge(`${result.latencyMs}ms`, 'proxy-result-latency')
+      output.setAttribute('aria-label', `可用，延迟 ${result.latencyMs} 毫秒`)
+      return
+    }
+
+    addBadge('不可用', 'proxy-result-unavailable')
+    addBadge(result.statusCode ? `HTTP ${result.statusCode}` : '超时', 'proxy-result-latency')
+    output.setAttribute('aria-label', `不可用${result.statusCode ? `，HTTP ${result.statusCode}` : ''}`)
+  }
+
+  async function testProxy(proxyId) {
+    renderProxyResult(proxyId, 'pending')
     try {
       const result = await api('/api/admin/proxies/test', {
         method: 'POST',
-        body: JSON.stringify({ proxyId: testedProxy }),
+        body: JSON.stringify({ proxyId }),
       })
-      if (testedProxy !== updateProxyId) return
-      const resultText = result.connected
-        ? `连接成功 · HTTP ${result.statusCode} · ${result.latencyMs} ms`
-        : `连接失败${result.statusCode ? ` · HTTP ${result.statusCode}` : ''} · ${result.latencyMs} ms`
-      setMessage(status, resultText, result.connected ? 'success' : 'error')
-    } catch (error) {
-      if (testedProxy === updateProxyId) setMessage(status, error.message, 'error')
+      renderProxyResult(proxyId, 'complete', result)
+    } catch {
+      renderProxyResult(proxyId, 'complete', { connected: false })
+    }
+  }
+
+  async function testAllProxies() {
+    const button = document.getElementById('proxy-test-button')
+    button.disabled = true
+    try {
+      await Promise.all(proxyRadios.map((radio) => testProxy(radio.value)))
     } finally {
       button.disabled = false
     }
@@ -402,13 +497,18 @@
       if (!radio.checked) return
       updateProxyId = radio.value
       try { localStorage.setItem('mantou-admin-update-proxy', updateProxyId) } catch {}
-      setMessage(document.getElementById('proxy-test-status'), '', '')
       if (updateDialog.open) loadUpdateInfo()
     })
   }
-  document.getElementById('proxy-test-button').addEventListener('click', testSelectedProxy)
+  document.getElementById('proxy-test-button').addEventListener('click', testAllProxies)
   document.getElementById('update-button').addEventListener('click', openUpdateDialog)
   document.getElementById('update-close-button').addEventListener('click', () => updateDialog.close())
+  document.getElementById('release-notes-close').addEventListener('click', () => {
+    document.getElementById('release-notes-dialog').close()
+  })
+  document.getElementById('release-notes-dialog').addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) event.currentTarget.close()
+  })
   updateDialog.addEventListener('click', (event) => {
     if (event.target === updateDialog) updateDialog.close()
   })

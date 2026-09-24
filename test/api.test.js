@@ -83,9 +83,20 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     head_sha: sha,
     status: 'completed',
     conclusion: index === 3 ? 'failure' : 'success',
+    created_at: `2026-09-${String(24 - index).padStart(2, '0')}T10:00:00Z`,
+    updated_at: `2026-09-${String(24 - index).padStart(2, '0')}T10:05:00Z`,
+    html_url: `https://github.com/TimShitPig/mantou-toolbox-backend/actions/runs/${index + 1}`,
+    head_commit: { message: `Update ${versionNames[index]}\n\nPublished application changes.` },
   }))
+  const releases = [{
+    tag_name: 'v0.0.6',
+    published_at: '2026-09-24T10:06:00Z',
+    prerelease: false,
+    body: 'Added version history and release notes.',
+    html_url: 'https://github.com/TimShitPig/mantou-toolbox-backend/releases/tag/v0.0.6',
+  }]
   const updateFetchUrls = []
-  let testedProxyUrl = ''
+  const testedProxyUrls = []
   const config = createConfig({}, {
     host: '127.0.0.1',
     port: 0,
@@ -106,13 +117,15 @@ test('HTTP API workflow starts a real server and persists local state', async ()
       updateFetchUrls.push(String(url))
       return {
         ok: true,
-        json: async () => String(url).includes('/actions/runs?')
-          ? { workflow_runs: workflowRuns }
-          : tags,
+        json: async () => {
+          if (String(url).includes('/actions/runs?')) return { workflow_runs: workflowRuns }
+          if (String(url).includes('/releases?')) return releases
+          return tags
+        },
       }
     },
     proxyFetchImpl: async (url) => {
-      testedProxyUrl = String(url)
+      testedProxyUrls.push(String(url))
       return {
         ok: true,
         status: 200,
@@ -133,20 +146,32 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(adminPage.status, 200)
     const adminMarkup = await adminPage.text()
     assert.match(adminMarkup, /馒头工具箱/)
+    assert.match(adminMarkup, /RUNTIME LOGS/)
+    assert.match(adminMarkup, /运行日志/)
+    assert.doesNotMatch(adminMarkup, /CLIENT REPORTS/)
     assert.match(adminMarkup, /aria-label="后台导航"/)
     assert.match(adminMarkup, /id="update-button"/)
     assert.match(adminMarkup, /id="update-dialog"/)
     assert.match(adminMarkup, /id="apply-update-button"/)
     assert.match(adminMarkup, /id="apply-rollback-button"/)
     assert.match(adminMarkup, /复制更新命令/)
+    assert.match(adminMarkup, /id="release-versions-body"/)
+    assert.match(adminMarkup, /<th>版本<\/th>/)
+    assert.match(adminMarkup, /id="release-notes-dialog"/)
     for (const proxy of ['github', 'edgeone', 'hk', 'gh-proxy', 'gh-hik']) {
       assert.match(adminMarkup, new RegExp(`value="${proxy}"`))
     }
     assert.match(adminMarkup, /测试代理连通性/)
+    for (const proxy of ['github', 'edgeone', 'hk', 'gh-proxy', 'gh-hik']) {
+      assert.match(adminMarkup, new RegExp(`data-proxy-result="${proxy}"`))
+    }
     const adminScriptResponse = await fetch(new URL('/admin.js', baseUrl))
     assert.equal(adminScriptResponse.status, 200)
     const adminScript = await adminScriptResponse.text()
     assert.match(adminScript, /update-source\.sh/)
+    assert.match(adminScript, /renderSystemLogs/)
+    assert.match(adminScript, /renderVersionHistory/)
+    assert.match(adminScript, /Promise\.all\(proxyRadios\.map/)
     for (const page of ['novel', 'logs', 'data', 'ads', 'status']) {
       assert.match(adminMarkup, new RegExp(`data-page="${page}"`))
       assert.match(adminMarkup, new RegExp(`id="page-${page}"`))
@@ -306,6 +331,14 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(badAdminLogin.response.status, 401)
     assert.equal(badAdminLogin.payload.message, 'admin_password_invalid')
 
+    const clientLog = await requestJson(baseUrl, '/api/v1/logs/client.php', jsonRequest('POST', {
+      level: 'error',
+      scope: 'frontend-test',
+      message: 'client-only-marker',
+      requestId: 'client-test-request',
+    }))
+    assert.equal(clientLog.response.status, 200)
+
     const adminLogin = await requestJson(
       baseUrl,
       '/api/admin/login',
@@ -323,8 +356,15 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(adminSummary.response.status, 200)
     assert.equal(adminSummary.payload.data.metrics.users, 1)
     assert.equal(adminSummary.payload.data.metrics.jobs_completed_today, 1)
+    assert.equal(adminSummary.payload.data.metrics.errors_24h, 0)
     assert.equal(adminSummary.payload.data.settings.downloadEnabled, true)
     assert.equal(adminSummary.payload.data.jobs[0].title, 'Integration Book')
+    assert.ok(adminSummary.payload.data.systemLogs.some((entry) => entry.source === 'server' && entry.message === 'Backend started'))
+    assert.ok(adminSummary.payload.data.systemLogs.some((entry) => entry.source === 'http'
+      && entry.method === 'POST'
+      && entry.path === '/api/admin/login'
+      && entry.statusCode === 401))
+    assert.ok(adminSummary.payload.data.systemLogs.every((entry) => !entry.message.includes('client-only-marker')))
 
     const proxyTest = await requestJson(baseUrl, '/api/admin/proxies/test', {
       method: 'POST',
@@ -334,7 +374,19 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(proxyTest.response.status, 200)
     assert.equal(proxyTest.payload.data.connected, true)
     assert.equal(proxyTest.payload.data.statusCode, 200)
-    assert.match(testedProxyUrl, /^https:\/\/gh-proxy\.com\/https:\/\/api\.github\.com\/repos\//)
+    assert.match(testedProxyUrls[0], /^https:\/\/gh-proxy\.com\/https:\/\/api\.github\.com\/repos\//)
+
+    for (const proxyId of ['github', 'edgeone', 'hk', 'gh-proxy', 'gh-hik']) {
+      const result = await requestJson(baseUrl, '/api/admin/proxies/test', {
+        method: 'POST',
+        headers: { Cookie: adminCookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxyId }),
+      })
+      assert.equal(result.response.status, 200)
+      assert.equal(result.payload.data.connected, true)
+      assert.equal(result.payload.data.proxyId, proxyId)
+    }
+    assert.equal(testedProxyUrls.length, 6)
 
     const invalidProxyTest = await requestJson(baseUrl, '/api/admin/proxies/test', {
       method: 'POST',
@@ -352,11 +404,21 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.equal(updateInfo.payload.data.latestVersion, 'v0.0.6')
     assert.equal(updateInfo.payload.data.hasUpdate, true)
     assert.equal(updateInfo.payload.data.deployDir, '/root/mantou-toolbox-deploy')
+    assert.equal(updateInfo.payload.data.versions.length, 6)
+    assert.deepEqual(updateInfo.payload.data.versions[0], {
+      version: 'v0.0.6',
+      publishedAt: '2026-09-24T10:06:00Z',
+      content: 'Added version history and release notes.',
+      prerelease: false,
+      detailsUrl: 'https://github.com/TimShitPig/mantou-toolbox-backend/releases/tag/v0.0.6',
+    })
+    assert.equal(updateInfo.payload.data.versions[1].content, 'Update v0.0.5\n\nPublished application changes.')
+    assert.equal(updateInfo.payload.data.versions[1].publishedAt, '2026-09-23T10:05:00Z')
     assert.deepEqual(
       updateInfo.payload.data.rollbackVersions,
       ['v0.0.3', 'v0.0.2', 'v0.0.0']
     )
-    assert.equal(updateFetchUrls.length, 2)
+    assert.equal(updateFetchUrls.length, 3)
     assert.ok(updateFetchUrls.every((url) => url.startsWith('https://gh-proxy.com/https://api.github.com/')))
 
     const updateSettings = await requestJson(
@@ -383,6 +445,15 @@ test('HTTP API workflow starts a real server and persists local state', async ()
       jsonRequest('POST', { link: qimaoLink })
     )
     assert.equal(disabledQimaoParse.response.status, 503)
+
+    const runtimeLogSummary = await requestJson(baseUrl, '/api/admin/summary', {
+      headers: { Cookie: adminCookie },
+    })
+    assert.equal(runtimeLogSummary.response.status, 200)
+    assert.ok(runtimeLogSummary.payload.data.metrics.errors_24h >= 1)
+    assert.ok(runtimeLogSummary.payload.data.systemLogs.some((entry) => entry.level === 'error'
+      && entry.path === '/api/download/parse.php'
+      && entry.statusCode === 503))
     assert.equal(disabledQimaoParse.payload.message, 'qimao_disabled')
 
     const adminLogout = await fetch(new URL('/api/admin/logout', baseUrl), {

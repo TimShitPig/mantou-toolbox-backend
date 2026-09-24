@@ -30,7 +30,7 @@ docker compose logs -f backend
 
 ```sh
 cd /root/mantou-toolbox-deploy
-./update-source.sh v0.0.2
+./update-source.sh v0.0.3
 ```
 
 ## 自动发布镜像
@@ -39,7 +39,7 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.2
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.3
 ```
 
 工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。GHCR 镜像包仍公开发布；服务器一键部署使用 root 目录中的源码本地构建，不拉取 GHCR 应用镜像。

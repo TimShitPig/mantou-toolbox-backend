@@ -29,7 +29,7 @@ case "$request" in
   *compose.yaml*) cp "$COMPOSE_FIXTURE" "$output" ;;
   *deploy/update-source.sh*) cp "$UPDATE_FIXTURE" "$output" ;;
   *archive/refs/heads/main.tar.gz*) archive_source "$SOURCE_FIXTURE" "$output" ;;
-  *archive/refs/tags/v0.0.3.tar.gz*) archive_source "$SOURCE_FIXTURE_V2" "$output" ;;
+  *archive/refs/tags/v0.0.4.tar.gz*) archive_source "$SOURCE_FIXTURE_V2" "$output" ;;
   *) printf '%s\n' '198.51.100.27' ;;
 esac
 EOF
@@ -87,7 +87,7 @@ ENV_FILE="$TEMP_ROOT/deploy/.env"
 [ ! -e "$TEMP_ROOT/deploy/source/test" ]
 grep -Fqx 'PUBLIC_PORT=8787' "$ENV_FILE"
 grep -Fqx 'APP_BASE_URL=http://198.51.100.27:8787' "$ENV_FILE"
-grep -Fqx 'APP_BUILD_VERSION=v0.0.2' "$ENV_FILE"
+grep -Fqx 'APP_BUILD_VERSION=v0.0.3' "$ENV_FILE"
 grep -Fqx 'NODE_BASE_IMAGE=m.daocloud.io/docker.io/library/node:24-bookworm-slim' "$ENV_FILE"
 grep -Fqx "DEPLOY_DIR=$TEMP_ROOT/deploy" "$ENV_FILE"
 [ "$(sed -n 's/^APP_SECRET=//p' "$ENV_FILE" | wc -c | tr -d ' ')" -eq 65 ]
@@ -110,7 +110,7 @@ printf '%s\n' \
   'UPDATE_IMAGE_REPOSITORY=ghcr.io/timshitpig/mantou-toolbox-backend' >> "$ENV_FILE"
 run_prepare
 
-grep -Fqx 'APP_BUILD_VERSION=v0.0.2' "$ENV_FILE"
+grep -Fqx 'APP_BUILD_VERSION=v0.0.3' "$ENV_FILE"
 grep -Fqx "DEPLOY_DIR=$TEMP_ROOT/deploy" "$ENV_FILE"
 [ "$(sed -n 's/^APP_SECRET=//p' "$ENV_FILE")" = "$APP_SECRET_BEFORE" ]
 [ "$(sed -n 's/^ADMIN_PASSWORD=//p' "$ENV_FILE")" = "$ADMIN_PASSWORD_BEFORE" ]
@@ -121,21 +121,21 @@ grep -Fqx "DEPLOY_DIR=$TEMP_ROOT/deploy" "$ENV_FILE"
 ! grep -q '^UPDATE_DEPLOY_DIR=' "$ENV_FILE"
 
 cp -R "$TEMP_ROOT/deploy/source" "$TEMP_ROOT/source-v2"
-sed -i 's/"version": "0.0.2"/"version": "0.0.3"/' "$TEMP_ROOT/source-v2/package.json"
+sed -i 's/"version": "0.0.3"/"version": "0.0.4"/' "$TEMP_ROOT/source-v2/package.json"
 if (
   cd "$TEMP_ROOT/deploy"
   PATH="$TEMP_ROOT/bin:$PATH" \
     SOURCE_FIXTURE_V2="$TEMP_ROOT/source-v2" \
     COMPOSE_CALLS="$TEMP_ROOT/compose-calls" \
     MOCK_FAIL_FIRST=true \
-    sh ./update-source.sh v0.0.3
+    sh ./update-source.sh v0.0.4
 ); then
   printf '%s\n' 'failed update unexpectedly reported success' >&2
   exit 1
 fi
-grep -Fqx 'APP_BUILD_VERSION=v0.0.2' "$ENV_FILE"
+grep -Fqx 'APP_BUILD_VERSION=v0.0.3' "$ENV_FILE"
 [ -f "$TEMP_ROOT/deploy/source/Dockerfile" ]
-grep -Fq 'version": "0.0.2"' "$TEMP_ROOT/deploy/source/package.json"
+grep -Fq 'version": "0.0.3"' "$TEMP_ROOT/deploy/source/package.json"
 [ "$(wc -l < "$TEMP_ROOT/compose-calls")" -eq 2 ]
 
 printf '%s\n' 'source-based single-container deployment preparation passed'

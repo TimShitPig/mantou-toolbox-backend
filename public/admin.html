@@ -94,14 +94,14 @@
 
         <section id="page-logs" class="page-view" hidden>
           <div class="page-heading">
-            <div><p class="eyebrow">CLIENT REPORTS</p><h2>日志</h2></div>
-            <span id="log-count" class="section-state">最近 12 条</span>
+            <div><p class="eyebrow">RUNTIME LOGS</p><h2>运行日志</h2></div>
+            <span id="log-count" class="section-state">最近 100 条</span>
           </div>
           <section class="activity-section page-section">
             <div class="table-wrap">
               <table>
-                <thead><tr><th>级别</th><th>模块</th><th>消息</th><th>用户</th><th>时间</th></tr></thead>
-                <tbody id="logs-body"><tr><td class="empty-cell" colspan="5">暂无日志</td></tr></tbody>
+                <thead><tr><th>级别</th><th>来源</th><th>请求</th><th>状态</th><th>事件</th><th>时间</th></tr></thead>
+                <tbody id="logs-body"><tr><td class="empty-cell" colspan="6">暂无运行日志</td></tr></tbody>
               </table>
             </div>
           </section>
@@ -205,19 +205,43 @@
           <span class="update-notice-mark" aria-hidden="true">↓</span>
           <div><strong>有新版本可用</strong><span id="available-version">--</span></div>
         </div>
+        <section class="release-history" aria-labelledby="release-history-title">
+          <div class="release-history-heading">
+            <h3 id="release-history-title">版本历史</h3>
+            <span id="release-count" class="section-state">读取中</span>
+          </div>
+          <div class="release-table-wrap">
+            <table class="release-table">
+              <thead><tr><th>版本</th><th>发布时间</th><th>更新内容</th></tr></thead>
+              <tbody id="release-versions-body"><tr><td class="empty-cell" colspan="3">正在读取版本…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
         <fieldset class="proxy-fieldset">
           <legend>GitHub 加速地址</legend>
           <div class="proxy-options">
-            <div class="proxy-option-row">
+            <div class="proxy-option-row proxy-test-row">
               <label class="proxy-option"><input name="github-proxy" type="radio" value="github"><span>使用 GitHub 加速</span></label>
               <button id="proxy-test-button" class="button button-secondary" type="button">测试代理连通性</button>
+              <span class="proxy-result" data-proxy-result="github" aria-live="polite"></span>
             </div>
-            <label class="proxy-option"><input name="github-proxy" type="radio" value="edgeone"><span>https://edgeone.gh-proxy.com</span></label>
-            <label class="proxy-option"><input name="github-proxy" type="radio" value="hk"><span>https://hk.gh-proxy.com</span></label>
-            <label class="proxy-option"><input name="github-proxy" type="radio" value="gh-proxy" checked><span>https://gh-proxy.com</span></label>
-            <label class="proxy-option"><input name="github-proxy" type="radio" value="gh-hik"><span>https://gh.hik.top</span></label>
+            <div class="proxy-option-row">
+              <label class="proxy-option"><input name="github-proxy" type="radio" value="edgeone"><span>https://edgeone.gh-proxy.com</span></label>
+              <span class="proxy-result" data-proxy-result="edgeone" aria-live="polite"></span>
+            </div>
+            <div class="proxy-option-row">
+              <label class="proxy-option"><input name="github-proxy" type="radio" value="hk"><span>https://hk.gh-proxy.com</span></label>
+              <span class="proxy-result" data-proxy-result="hk" aria-live="polite"></span>
+            </div>
+            <div class="proxy-option-row">
+              <label class="proxy-option"><input name="github-proxy" type="radio" value="gh-proxy" checked><span>https://gh-proxy.com</span></label>
+              <span class="proxy-result" data-proxy-result="gh-proxy" aria-live="polite"></span>
+            </div>
+            <div class="proxy-option-row">
+              <label class="proxy-option"><input name="github-proxy" type="radio" value="gh-hik"><span>https://gh.hik.top</span></label>
+              <span class="proxy-result" data-proxy-result="gh-hik" aria-live="polite"></span>
+            </div>
           </div>
-          <p id="proxy-test-status" class="proxy-test-status form-message" role="status" aria-live="polite"></p>
         </fieldset>
         <p id="update-action-message" class="update-action-message form-message" role="status" aria-live="polite"></p>
         <button id="apply-update-button" class="button button-primary button-wide" type="button" disabled>复制更新命令</button>
@@ -230,6 +254,17 @@
             <button id="apply-rollback-button" class="button button-secondary" type="button" disabled>复制回退命令</button>
           </div>
         </div>
+      </div>
+    </dialog>
+    <dialog id="release-notes-dialog" class="release-notes-dialog" aria-labelledby="release-notes-title">
+      <div class="release-notes-content">
+        <div class="release-notes-heading">
+          <div><p class="eyebrow">RELEASE NOTES</p><h2 id="release-notes-title">版本说明</h2></div>
+          <button id="release-notes-close" class="button button-quiet" type="button">关闭</button>
+        </div>
+        <p id="release-notes-date" class="release-notes-date"></p>
+        <div id="release-notes-body" class="release-notes-body"></div>
+        <a id="release-details-link" class="release-details-link" href="#" target="_blank" rel="noopener noreferrer">查看代码改动</a>
       </div>
     </dialog>
   </div>

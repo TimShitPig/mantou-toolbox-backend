@@ -101,6 +101,19 @@ function createDatabase(databasePath) {
       FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS system_logs (
+      id TEXT PRIMARY KEY,
+      level TEXT NOT NULL,
+      source TEXT NOT NULL,
+      message TEXT NOT NULL,
+      request_id TEXT NOT NULL DEFAULT '',
+      method TEXT NOT NULL DEFAULT '',
+      path TEXT NOT NULL DEFAULT '',
+      status_code INTEGER,
+      meta_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
       value_json TEXT NOT NULL,
@@ -117,6 +130,8 @@ function createDatabase(databasePath) {
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_download_jobs_owner ON download_jobs(owner_user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_client_logs_created ON client_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_system_logs_level_created ON system_logs(level, created_at DESC);
   `)
 
   const statements = {
@@ -169,6 +184,15 @@ function createDatabase(databasePath) {
       `INSERT INTO client_logs (id, user_id, level, scope, message, request_id, meta_json, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ),
+    createSystemLog: db.prepare(
+      `INSERT INTO system_logs
+       (id, level, source, message, request_id, method, path, status_code, meta_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ),
+    pruneSystemLogsByAge: db.prepare('DELETE FROM system_logs WHERE created_at < ?'),
+    pruneSystemLogsByCount: db.prepare(
+      'DELETE FROM system_logs WHERE id IN (SELECT id FROM system_logs ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET 5000)'
+    ),
     getSettings: db.prepare('SELECT key, value_json FROM app_settings'),
     setSetting: db.prepare(
       `INSERT INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)
@@ -186,10 +210,10 @@ function createDatabase(databasePath) {
          (SELECT COUNT(*) FROM download_jobs WHERE status IN ('queued', 'running')) AS jobs_active,
          (SELECT COUNT(*) FROM download_jobs WHERE status = 'completed' AND created_at >= ?) AS jobs_completed_today,
          (SELECT COUNT(*) FROM download_jobs WHERE status = 'failed' AND created_at >= ?) AS jobs_failed_today,
-         (SELECT COUNT(*) FROM client_logs WHERE level = 'error' AND created_at >= ?) AS errors_24h`
+         (SELECT COUNT(*) FROM system_logs WHERE level = 'error' AND created_at >= ?) AS errors_24h`
     ),
     adminJobs: db.prepare('SELECT * FROM download_jobs ORDER BY created_at DESC LIMIT ?'),
-    adminLogs: db.prepare('SELECT * FROM client_logs ORDER BY created_at DESC LIMIT ?'),
+    adminSystemLogs: db.prepare('SELECT * FROM system_logs ORDER BY created_at DESC, rowid DESC LIMIT ?'),
   }
 
   function upsertUser(provider, subject, profile) {
@@ -299,6 +323,22 @@ function createDatabase(databasePath) {
         entry.createdAt
       )
     },
+    createSystemLog(entry) {
+      statements.createSystemLog.run(
+        entry.id,
+        entry.level,
+        entry.source,
+        entry.message,
+        entry.requestId || '',
+        entry.method || '',
+        entry.path || '',
+        entry.statusCode ?? null,
+        JSON.stringify(entry.meta || {}),
+        entry.createdAt
+      )
+      statements.pruneSystemLogsByAge.run(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      statements.pruneSystemLogsByCount.run()
+    },
     getAdminSettings() {
       const output = {}
       for (const row of statements.getSettings.all()) {
@@ -350,20 +390,22 @@ function createDatabase(databasePath) {
           updatedAt: job.updatedAt,
         }
       })
-      const logs = statements.adminLogs.all(12).map((row) => ({
+      const systemLogs = statements.adminSystemLogs.all(100).map((row) => ({
         id: row.id,
-        userId: row.user_id === null ? null : String(row.user_id),
         level: row.level,
-        scope: row.scope,
+        source: row.source,
         message: row.message,
         requestId: row.request_id,
+        method: row.method,
+        path: row.path,
+        statusCode: row.status_code === null ? null : Number(row.status_code),
         meta: parseJson(row.meta_json, {}),
         createdAt: Number(row.created_at || 0),
       }))
       return {
         metrics: Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, Number(value || 0)])),
         jobs,
-        logs,
+        systemLogs,
       }
     },
   }

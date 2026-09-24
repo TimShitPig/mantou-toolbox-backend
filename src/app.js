@@ -251,6 +251,32 @@ function createApp(options = {}) {
   let closed = false
   const updateCache = new Map()
 
+  function recordSystemLog(level, source, message, context = {}) {
+    const entry = {
+      id: crypto.randomUUID(),
+      level,
+      source: normalizeShortText(source, 64) || 'server',
+      message: normalizeShortText(message, 1024) || 'system_event',
+      requestId: normalizeShortText(context.requestId, 128),
+      method: normalizeShortText(context.method, 16),
+      path: normalizeShortText(context.path, 512),
+      statusCode: Number.isInteger(context.statusCode) ? context.statusCode : null,
+      meta: sanitizeMeta(context.meta || {}),
+      createdAt: Date.now(),
+    }
+
+    try {
+      store.createSystemLog(entry)
+    } catch (error) {
+      console.error('Failed to persist system log:', error)
+    }
+
+    const output = JSON.stringify(entry)
+    if (level === 'error') console.error(output)
+    else if (level === 'warn') console.warn(output)
+    else console.info(output)
+  }
+
   function getRuntimeConfig() {
     return { ...config, ...store.getAdminSettings() }
   }
@@ -315,7 +341,7 @@ function createApp(options = {}) {
       data: {
         metrics: summary.metrics,
         jobs: summary.jobs,
-        logs: summary.logs,
+        systemLogs: summary.systemLogs,
         settings: adminSettingsView(runtimeConfig),
         generatedAt: Date.now(),
       },
@@ -332,10 +358,13 @@ function createApp(options = {}) {
       const options = { headers, signal: AbortSignal.timeout(8000) }
       let tagsResponse
       let runsResponse
+      let releasesResponse
       try {
-        [tagsResponse, runsResponse] = await Promise.all([
+        [tagsResponse, runsResponse, releasesResponse] = await Promise.all([
           updateFetch(proxyGithubUrl(`https://api.github.com/repos/${UPDATE_REPOSITORY}/tags?per_page=100`, proxyId), options),
           updateFetch(proxyGithubUrl(`https://api.github.com/repos/${UPDATE_REPOSITORY}/actions/runs?per_page=100`, proxyId), options),
+          updateFetch(proxyGithubUrl(`https://api.github.com/repos/${UPDATE_REPOSITORY}/releases?per_page=100`, proxyId), options)
+            .catch(() => null),
         ])
       } catch {
         throw new ApiError(502, 'update_check_failed')
@@ -346,28 +375,52 @@ function createApp(options = {}) {
 
       let tags
       let runs
+      let releases = []
       try {
         ;[tags, runs] = await Promise.all([tagsResponse.json(), runsResponse.json()])
       } catch {
         throw new ApiError(502, 'update_check_failed')
       }
+      if (releasesResponse && releasesResponse.ok) {
+        try {
+          const releasePayload = await releasesResponse.json()
+          if (Array.isArray(releasePayload)) releases = releasePayload
+        } catch {}
+      }
       if (!Array.isArray(tags) || !Array.isArray(runs.workflow_runs)) {
         throw new ApiError(502, 'update_check_failed')
       }
 
-      const publishedRevisions = new Set(runs.workflow_runs
-        .filter((run) => run.name === 'Publish Docker image'
-          && run.status === 'completed'
-          && run.conclusion === 'success')
-        .map((run) => String(run.head_sha || '').toLowerCase()))
+      const publishedRuns = new Map()
+      for (const run of runs.workflow_runs) {
+        if (run.name !== 'Publish Docker image' || run.status !== 'completed' || run.conclusion !== 'success') continue
+        const revision = String(run.head_sha || '').toLowerCase()
+        if (!/^[a-f0-9]{40}$/.test(revision)) continue
+        const existing = publishedRuns.get(revision)
+        if (!existing || String(run.updated_at || run.created_at || '') > String(existing.updated_at || existing.created_at || '')) {
+          publishedRuns.set(revision, run)
+        }
+      }
+      const releasesByTag = new Map(releases
+        .filter((release) => release && typeof release.tag_name === 'string')
+        .map((release) => [release.tag_name, release]))
       const versions = tags
-        .map((tag) => ({
-          ...parseAppVersion(tag.name),
-          revision: String(tag.commit && tag.commit.sha || '').toLowerCase(),
-        }))
-        .filter((tag) => tag.version
-          && /^[a-f0-9]{40}$/.test(tag.revision)
-          && publishedRevisions.has(tag.revision))
+        .map((tag) => {
+          const parsed = parseAppVersion(tag.name)
+          const revision = String(tag.commit && tag.commit.sha || '').toLowerCase()
+          const run = publishedRuns.get(revision)
+          const release = releasesByTag.get(tag.name)
+          if (!parsed || !/^[a-f0-9]{40}$/.test(revision) || !run) return null
+          return {
+            ...parsed,
+            revision,
+            publishedAt: String(release && release.published_at || run.updated_at || run.created_at || ''),
+            content: String(release && release.body || run.head_commit && run.head_commit.message || run.display_title || '').trim(),
+            prerelease: Boolean(release && release.prerelease),
+            detailsUrl: String(release && release.html_url || `https://github.com/${UPDATE_REPOSITORY}/commit/${revision}`),
+          }
+        })
+        .filter(Boolean)
         .sort((left, right) => compareAppVersions(right.version, left.version))
       const current = parseAppVersion(config.appBuildVersion)
       const latest = versions[0] || null
@@ -381,6 +434,13 @@ function createApp(options = {}) {
           currentVersion: current && current.version,
           latestVersion: latest && latest.version,
           hasUpdate: Boolean(latest && (!current || compareAppVersions(latest.version, current.version) > 0)),
+          versions: versions.slice(0, 30).map(({ version, publishedAt, content, prerelease, detailsUrl }) => ({
+            version,
+            publishedAt,
+            content,
+            prerelease,
+            detailsUrl,
+          })),
           rollbackVersions: rollbackVersions.map((version) => version.version),
           deployDir: config.deployDir,
         },
@@ -479,13 +539,21 @@ function createApp(options = {}) {
       }
       store.completeJob(job.id, manifest, filePath)
     } catch (error) {
-      store.failJob(job.id, error && error.message ? error.message : 'download_generation_failed')
+      const message = error && error.message ? error.message : 'download_generation_failed'
+      store.failJob(job.id, message)
+      recordSystemLog('error', 'downloads', 'Download task failed', {
+        meta: { jobId: job.id, source: job.source, error: String(message).slice(0, 512) },
+      })
     }
   }
 
   function scheduleDownloadJob(jobId) {
     setImmediate(() => {
-      runDownloadJob(jobId).catch(() => {})
+      runDownloadJob(jobId).catch((error) => {
+        recordSystemLog('error', 'downloads', 'Download task crashed', {
+          meta: { jobId, error: String(error && error.message || error).slice(0, 512) },
+        })
+      })
     })
   }
 
@@ -748,15 +816,19 @@ function createApp(options = {}) {
 
   async function handler(req, res) {
     const origin = String(req.headers.origin || '')
+    const requestedId = normalizeShortText(req.headers['x-request-id'], 128)
+    const requestId = /^[A-Za-z0-9._:-]+$/.test(requestedId) ? requestedId : crypto.randomUUID()
+    res.setHeader('X-Request-Id', requestId)
     if (req.method === 'OPTIONS') {
       sendEmpty(res, config, 204, origin)
       return
     }
 
     let url
+    let pathname = '/'
     try {
       url = new URL(requestOrigin(req, config))
-      const pathname = url.pathname
+      pathname = url.pathname
       if (pathname === '/') {
         assertMethod(req, 'GET')
         res.writeHead(302, {
@@ -795,9 +867,15 @@ function createApp(options = {}) {
       if (pathname.startsWith('/uploads/avatars/')) return await handleAvatarFile(req, res, pathname, origin)
       throw new ApiError(404, 'not_found')
     } catch (error) {
-      if (!error.expose && !(error instanceof ApiError) && !(error instanceof AuthError)) {
-        console.error('Unhandled request error:', error)
-      }
+      const statusCode = Number(error && error.status) || 500
+      const level = statusCode >= 500 ? 'error' : 'warn'
+      recordSystemLog(level, 'http', `HTTP ${statusCode} ${req.method} ${pathname}: ${String(error && error.message || 'request_failed')}`, {
+        requestId,
+        method: req.method,
+        path: pathname,
+        statusCode,
+        meta: { errorName: String(error && error.name || 'Error') },
+      })
       sendError(res, config, error, origin)
     }
   }
@@ -820,6 +898,11 @@ function createApp(options = {}) {
     if (address && typeof address === 'object' && /:0$/.test(config.appBaseUrl)) {
       config.appBaseUrl = `http://${host}:${address.port}`
     }
+    recordSystemLog('info', 'server', 'Backend started', {
+      method: 'SYSTEM',
+      path: '/healthz',
+      meta: { host, port: address && typeof address === 'object' ? address.port : port, version: config.appBuildVersion || 'unknown' },
+    })
     return server
   }
 
@@ -829,6 +912,7 @@ function createApp(options = {}) {
     }
     closed = true
     if (server) {
+      recordSystemLog('info', 'server', 'Backend stopping', { method: 'SYSTEM' })
       await new Promise((resolve) => server.close(resolve))
       server = null
     }
