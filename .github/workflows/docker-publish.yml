@@ -25,16 +25,9 @@ jobs:
       - name: Test backend API
         run: npm test
 
-      - name: Read app version
-        id: app-version
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
       - name: Check deployment script syntax
         run: |
           sh -n deploy/docker-deploy.sh
-          sh -n deploy/update-source.sh
           docker compose config --quiet
           sh test/docker-deploy.test.sh
 
@@ -61,7 +54,5 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          build-args: |
-            APP_BUILD_VERSION=${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.app-version.outputs.version) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
