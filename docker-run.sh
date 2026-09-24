@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
-IMAGE="${IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}"
+IMAGE="${IMAGE:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest}"
 NAME="${NAME:-mantou-toolbox}"
-UPDATER_IMAGE="${UPDATER_IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}"
+UPDATER_IMAGE="${UPDATER_IMAGE:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest}"
 UPDATE_AGENT_NAME="${UPDATE_AGENT_NAME:-${NAME}-updater}"
 UPDATE_NETWORK="${UPDATE_NETWORK:-${NAME}-network}"
 PUBLIC_PORT="${PUBLIC_PORT:-${PORT:-}}"

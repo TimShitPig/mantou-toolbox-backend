@@ -14,7 +14,7 @@ const PROXY_HOSTS = Object.freeze({
   'gh-proxy': 'https://gh-proxy.com',
   'gh-hik': 'https://gh.hik.top',
 })
-const IMAGE_NAME = 'ghcr.io/timshitpig/mantou-toolbox-backend'
+const DEFAULT_IMAGE_REPOSITORY = 'ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend'
 
 function sendJson(res, statusCode, payload) {
   const body = Buffer.from(JSON.stringify(payload))
@@ -43,6 +43,7 @@ function createUpdateAgent(options = {}) {
   const mode = String(options.mode ?? process.env.UPDATE_MODE ?? 'run').trim()
   const deployDir = path.resolve(options.deployDir ?? process.env.UPDATE_DEPLOY_DIR ?? '/opt/mantou-toolbox')
   const projectName = String(options.projectName ?? process.env.UPDATE_PROJECT_NAME ?? 'mantou-toolbox').trim()
+  const imageRepository = String(options.imageRepository ?? process.env.UPDATE_IMAGE_REPOSITORY ?? DEFAULT_IMAGE_REPOSITORY).trim().replace(/\/+$/, '')
   const stateFile = path.resolve(options.stateFile ?? process.env.UPDATE_AGENT_STATE_FILE ?? '/app/storage/update-agent-state.json')
   const execute = options.execute || executeDeployment
   const runDockerCommand = options.runCommand || runCommand
@@ -93,7 +94,7 @@ function createUpdateAgent(options = {}) {
   }
 
   async function executeDeployment({ version, proxyId, progress }) {
-    const image = `${IMAGE_NAME}:${version}`
+    const image = `${imageRepository}:${version}`
     if (mode === 'compose') {
       const composeArgs = ['compose', '--project-directory', deployDir, '--project-name', projectName, '-f', path.join(deployDir, 'compose.yaml')]
       const env = { ...process.env, BACKEND_IMAGE: image }

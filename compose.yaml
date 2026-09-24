@@ -3,7 +3,7 @@ name: mantou-toolbox
 services:
   backend:
     container_name: mantou-toolbox
-    image: "${BACKEND_IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}"
+    image: "${BACKEND_IMAGE:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest}"
     pull_policy: always
     restart: unless-stopped
     init: true
@@ -53,14 +53,15 @@ services:
 
   updater:
     container_name: mantou-toolbox-updater
-    image: "${UPDATE_AGENT_IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}"
+    image: "${UPDATE_AGENT_IMAGE:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest}"
     pull_policy: always
     command: ["node", "--no-warnings", "src/update-agent.js"]
     restart: unless-stopped
     user: "0:0"
     environment:
       UPDATE_AGENT_SECRET: "${UPDATE_AGENT_SECRET:-${APP_SECRET:-}}"
-      UPDATE_AGENT_IMAGE: "${UPDATE_AGENT_IMAGE:-${BACKEND_IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}}"
+      UPDATE_IMAGE_REPOSITORY: "${UPDATE_IMAGE_REPOSITORY:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend}"
+      UPDATE_AGENT_IMAGE: "${UPDATE_AGENT_IMAGE:-${BACKEND_IMAGE:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest}}"
       UPDATE_AGENT_PORT: "8787"
       UPDATE_TARGET_NAME: "mantou-toolbox"
       UPDATE_DEPLOY_DIR: "${UPDATE_DEPLOY_DIR:-${PWD:-/workspace}}"

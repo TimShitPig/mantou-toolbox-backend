@@ -139,7 +139,7 @@ test('compose updates target only the backend service and preserve the updater',
     assert.equal(commands.length, 2)
     assert.deepEqual(commands[0].args.slice(-2), ['pull', 'backend'])
     assert.deepEqual(commands[1].args.slice(-4), ['up', '-d', '--no-build', 'backend'])
-    assert.equal(commands[0].options.env.BACKEND_IMAGE, 'ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.1')
+    assert.equal(commands[0].options.env.BACKEND_IMAGE, 'ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:v0.0.1')
     assert.equal(commands[0].args.includes('updater'), false)
   })
 })

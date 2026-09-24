@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
-IMAGE="${IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}"
+IMAGE="${IMAGE:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest}"
 NAME="${NAME:-mantou-toolbox}"
-UPDATER_IMAGE="${UPDATER_IMAGE:-ghcr.io/timshitpig/mantou-toolbox-backend:latest}"
+UPDATER_IMAGE="${UPDATER_IMAGE:-ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest}"
 UPDATE_AGENT_NAME="${UPDATE_AGENT_NAME:-${NAME}-updater}"
 UPDATE_NETWORK="${UPDATE_NETWORK:-${NAME}-network}"
 UPDATE_AGENT_INTERNAL="${UPDATE_AGENT_INTERNAL:-false}"
@@ -175,7 +175,7 @@ case "$CURRENT_APP_VERSION" in
   *) CURRENT_APP_VERSION='v0.0.0' ;;
 esac
 if [ -n "$CURRENT_IMAGE_ID" ]; then
-  docker tag "$CURRENT_IMAGE_ID" "ghcr.io/timshitpig/mantou-toolbox-backend:${CURRENT_APP_VERSION}" >/dev/null 2>&1 || true
+  docker tag "$CURRENT_IMAGE_ID" "ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:${CURRENT_APP_VERSION}" >/dev/null 2>&1 || true
 fi
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 if [ "$(id -u)" -eq 0 ]; then

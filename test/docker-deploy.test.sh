@@ -113,7 +113,7 @@ AFTER="$(sha256sum "$ENV_FILE" | cut -d' ' -f1)"
     FORCE_UPDATE=true \
     sh "$ROOT/docker-update.sh"
 )
-grep -Fq 'pull ghcr.io/timshitpig/mantou-toolbox-backend:latest' "$TEMP_ROOT/docker-calls-forced"
+grep -Fq 'pull ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest' "$TEMP_ROOT/docker-calls-forced"
 grep -Fq -- '-p 6185:8787' "$TEMP_ROOT/docker-calls-forced"
 grep -Fq -- "--user ${EXPECTED_UID}:${EXPECTED_GID}" "$TEMP_ROOT/docker-calls-forced"
 grep -Fq 'network create mantou-toolbox-network' "$TEMP_ROOT/docker-calls-forced"
@@ -131,7 +131,7 @@ grep -Fq -- 'UPDATE_AGENT_URL=http://updater:8787' "$TEMP_ROOT/docker-calls-forc
     sh "$ROOT/docker-update.sh"
 )
 grep -Fq 'https://gh-proxy.com/https://api.github.com/repos/TimShitPig/mantou-toolbox-backend/commits/main' "$TEMP_ROOT/curl-calls-proxy"
-grep -Fq 'pull ghcr.io/timshitpig/mantou-toolbox-backend:latest' "$TEMP_ROOT/docker-calls-proxy"
+grep -Fq 'pull ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest' "$TEMP_ROOT/docker-calls-proxy"
 
 if (
   cd "$TEMP_ROOT/server"
@@ -174,8 +174,9 @@ PREPARED_ENV="$TEMP_ROOT/prepare/.env"
 [ -d "$TEMP_ROOT/prepare/content" ]
 grep -Fqx 'PUBLIC_PORT=8787' "$PREPARED_ENV"
 grep -Fqx 'APP_BASE_URL=http://198.51.100.27:8787' "$PREPARED_ENV"
-grep -Fqx 'BACKEND_IMAGE=ghcr.io/timshitpig/mantou-toolbox-backend:latest' "$PREPARED_ENV"
-grep -Fqx 'UPDATE_AGENT_IMAGE=ghcr.io/timshitpig/mantou-toolbox-backend:latest' "$PREPARED_ENV"
+grep -Fqx 'BACKEND_IMAGE=ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest' "$PREPARED_ENV"
+grep -Fqx 'UPDATE_AGENT_IMAGE=ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend:latest' "$PREPARED_ENV"
+grep -Fqx 'UPDATE_IMAGE_REPOSITORY=ghcr.nju.edu.cn/timshitpig/mantou-toolbox-backend' "$PREPARED_ENV"
 grep -Fqx "UPDATE_DEPLOY_DIR=$TEMP_ROOT/prepare" "$PREPARED_ENV"
 [ "$(sed -n 's/^APP_SECRET=//p' "$PREPARED_ENV" | wc -c | tr -d ' ')" -eq 65 ]
 [ "$(sed -n 's/^ADMIN_PASSWORD=//p' "$PREPARED_ENV" | wc -c | tr -d ' ')" -eq 65 ]
