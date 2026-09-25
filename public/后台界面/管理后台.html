@@ -225,11 +225,10 @@
           </div>
         </section>
         <fieldset class="proxy-fieldset">
-          <legend>GitHub 加速地址</legend>
+          <legend><span>GitHub 加速地址</span><button id="proxy-test-button" class="button button-secondary proxy-test-button" type="button">测试全部连接</button></legend>
           <div class="proxy-options">
-            <div class="proxy-option-row proxy-test-row">
-              <label class="proxy-option"><input name="github-proxy" type="radio" value="github"><span>使用 GitHub 加速</span></label>
-              <button id="proxy-test-button" class="button button-secondary" type="button">测试代理连通性</button>
+            <div class="proxy-option-row">
+              <label class="proxy-option"><input name="github-proxy" type="radio" value="github"><span>直连 GitHub（不使用代理）</span></label>
               <span class="proxy-result" data-proxy-result="github" aria-live="polite"></span>
             </div>
             <div class="proxy-option-row">
