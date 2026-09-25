@@ -46,6 +46,17 @@ function createConfig(env = process.env, overrides = {}) {
   const port = integer(env.PORT, 8787, 1)
   const storageDir = path.resolve(env.STORAGE_DIR || path.join(rootDir, 'storage'))
   const appBaseUrl = trimTrailingSlash(env.APP_BASE_URL || `http://${host}:${port}`)
+  const imageProxyAllowedHosts = list(env.IMAGE_PROXY_ALLOWLIST, [
+    'qimao.com',
+    'wtzw.com',
+    'fanqienovel.com',
+    'fqnovel.com',
+    'changdunovel.com',
+    'novelfmpic.com',
+  ])
+  if (!imageProxyAllowedHosts.includes('novelfmpic.com')) {
+    imageProxyAllowedHosts.push('novelfmpic.com')
+  }
 
   const config = {
     rootDir,
@@ -79,14 +90,7 @@ function createConfig(env = process.env, overrides = {}) {
     remoteRequestTimeoutMs: integer(env.REMOTE_REQUEST_TIMEOUT_MS, 8000, 1000),
     contentCatalogFile: String(env.CONTENT_CATALOG_FILE || '').trim() || null,
     contentProviderUrl: String(env.CONTENT_PROVIDER_URL || '').trim() || null,
-    imageProxyAllowedHosts: list(env.IMAGE_PROXY_ALLOWLIST, [
-      'qimao.com',
-      'wtzw.com',
-      'fanqienovel.com',
-      'fqnovel.com',
-      'changdunovel.com',
-      'novelfmpic.com',
-    ]),
+    imageProxyAllowedHosts,
   }
 
   return { ...config, ...overrides }
