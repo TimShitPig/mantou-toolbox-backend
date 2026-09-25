@@ -4875,8 +4875,11 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 # 请求密钥封装和正文 AES 解密由 PyCryptodome 承担。
 try:
     from Crypto.Cipher import AES as PYCRYPTODOME_AES
-except ImportError as exc:
-    raise RuntimeError('缺少 PyCryptodome：请执行 python -m pip install pycryptodome') from exc
+except ImportError:
+    try:
+        from Cryptodome.Cipher import AES as PYCRYPTODOME_AES
+    except ImportError as exc:
+        raise RuntimeError('缺少 PyCryptodome：请安装 python3-pycryptodome 或执行 python -m pip install pycryptodome') from exc
 try:
     import orjson
 except ImportError:
