@@ -20,7 +20,8 @@ COPY public ./public
 USER root
 RUN sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tar python3 python3-pycryptodome \
+    && apt-get install -y --no-install-recommends ca-certificates tar python3 python3-pycryptodome libheif-examples \
+    && command -v heif-convert >/dev/null \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /app/storage/avatars /app/storage/downloads \

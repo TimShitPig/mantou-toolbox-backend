@@ -1,6 +1,8 @@
+const { spawn } = require('node:child_process')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const http = require('node:http')
+const os = require('node:os')
 const path = require('node:path')
 const {
   clearSessionCookie,
@@ -242,6 +244,41 @@ async function fetchAllowedImage(url, config) {
     return { body, contentType }
   }
   throw new ApiError(502, 'image_proxy_redirect_limit')
+}
+
+async function convertHeicForMiniProgram(image) {
+  if (!/^image\/hei[cf](?:-sequence)?$/i.test(image.contentType)) {
+    return image
+  }
+
+  const temporaryDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mantou-cover-'))
+  try {
+    const sourcePath = path.join(temporaryDir, 'cover.heic')
+    const outputPath = path.join(temporaryDir, 'cover.jpg')
+    await fs.writeFile(sourcePath, image.body, { mode: 0o600 })
+    await new Promise((resolve, reject) => {
+      const child = spawn('heif-convert', [sourcePath, outputPath], {
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      child.once('error', reject)
+      child.once('close', (code) => {
+        if (code === 0) resolve()
+        else reject(new Error('heic_conversion_failed'))
+      })
+    })
+
+    const body = await fs.readFile(outputPath)
+    if (!body.length || body.length > MAX_PROXY_BYTES) {
+      throw new ApiError(502, 'image_conversion_output_invalid')
+    }
+    return { body, contentType: 'image/jpeg' }
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError(502, error && error.code === 'ENOENT' ? 'image_converter_unavailable' : 'image_conversion_failed')
+  } finally {
+    await fs.rm(temporaryDir, { recursive: true, force: true })
+  }
 }
 
 function createApp(options = {}) {
@@ -875,7 +912,7 @@ function createApp(options = {}) {
     if (!target) {
       throw new ApiError(400, 'image_proxy_url_required')
     }
-    const image = await fetchAllowedImage(target, config)
+    const image = await convertHeicForMiniProgram(await fetchAllowedImage(target, config))
     res.writeHead(200, {
       ...corsHeaders(config, origin),
       'Content-Type': image.contentType,

@@ -36,7 +36,7 @@ docker compose up -d --remove-orphans
 
 准备脚本会保留 `.env` 密钥和 SQLite 数据卷；之后的常规更新与回退都从后台页面点击完成。
 
-首次启用番茄正文下载器时，需要执行一次 `docker compose up -d --build`，把 Python 3 和 PyCryptodome 加入运行镜像；之后的源码更新仍由后台直接更新，不需要重建镜像。
+首次启用番茄正文和封面转换时，需要执行一次 `docker compose up -d --build`，把 Python 3、PyCryptodome 和 HEIC 转换工具加入运行镜像；之后的源码更新仍由后台直接更新，不需要重建镜像。
 
 ## 自动发布镜像
 
@@ -44,7 +44,7 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.10
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.11
 ```
 
 工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器首次部署时从源码构建基础运行容器，后台更新直接覆盖挂载源码，不会每次更新都构建新的本地镜像。
@@ -78,7 +78,7 @@ npm start
 
 解析接口可识别七猫和番茄链接。番茄详情、章节目录和正文分别通过番茄畅听 App 的 `/novelfm/bookapi/detail/v1/`、`/novelfm/bookapi/directory/all_items_v2/v1/`（失败时改用 App 的 v1 目录接口）和 `/novelfm/playerapi/full/mget/v1/` 获取，不请求小说网页；封面 URL 由 App 详情返回，并通过后端图片代理读取 `novelfmpic.com` 图片 CDN。七猫元数据仍由 `REMOTE_METADATA_ENABLED=true` 控制。
 
-番茄下载任务会调用内置正文下载器，读取目录、每次最多批量请求 1500 章、下载并解密章节，最后生成合并 TXT；章节总数和完成数会回报到现有下载进度接口。Docker 镜像会安装 Python 3 和 PyCryptodome。七猫正文仍可通过本地内容目录或 `CONTENT_PROVIDER_URL` 接入。
+番茄下载任务会调用内置正文下载器，读取目录、每次最多批量请求 1500 章、下载并解密章节，最后生成合并 TXT；章节总数和完成数会回报到现有下载进度接口。Docker 镜像会安装 Python 3、PyCryptodome 和 HEIC 转换工具，封面图片会以 JPEG 返回小程序。七猫正文仍可通过本地内容目录或 `CONTENT_PROVIDER_URL` 接入。
 
 本地 JSON 内容目录示例：
 
