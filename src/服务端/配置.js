@@ -36,7 +36,7 @@ function trimTrailingSlash(value) {
 }
 
 function createConfig(env = process.env, overrides = {}) {
-  const rootDir = path.resolve(__dirname, '..')
+  const rootDir = path.resolve(__dirname, '../..')
   let sourceVersion = ''
   try {
     sourceVersion = String(require(path.join(rootDir, 'package.json')).version || '').trim()
@@ -85,6 +85,7 @@ function createConfig(env = process.env, overrides = {}) {
       'fanqienovel.com',
       'fqnovel.com',
       'changdunovel.com',
+      'novelfmpic.com',
     ]),
   }
 

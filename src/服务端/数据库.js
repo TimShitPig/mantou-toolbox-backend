@@ -169,6 +169,9 @@ function createDatabase(databasePath) {
     markJobRunning: db.prepare(
       "UPDATE download_jobs SET status = 'running', updated_at = ? WHERE id = ? AND status = 'queued'"
     ),
+    updateJobProgress: db.prepare(
+      "UPDATE download_jobs SET total = ?, completed = ?, updated_at = ? WHERE id = ? AND status = 'running'"
+    ),
     completeJob: db.prepare(
       `UPDATE download_jobs
        SET status = 'completed', completed = total, manifest_json = ?, download_path = ?, error = '', updated_at = ?
@@ -299,6 +302,16 @@ function createDatabase(databasePath) {
     },
     markJobRunning(id) {
       statements.markJobRunning.run(Date.now(), id)
+      return this.getJob(id)
+    },
+    updateJobProgress(id, total, completed) {
+      const parsedTotal = Math.trunc(Number(total))
+      const normalizedTotal = Number.isFinite(parsedTotal) ? Math.max(1, Math.min(parsedTotal, 1000000)) : 1
+      const parsedCompleted = Math.trunc(Number(completed))
+      const normalizedCompleted = Number.isFinite(parsedCompleted)
+        ? Math.max(0, Math.min(normalizedTotal, parsedCompleted))
+        : 0
+      statements.updateJobProgress.run(normalizedTotal, normalizedCompleted, Date.now(), id)
       return this.getJob(id)
     },
     completeJob(id, manifest, downloadPath) {

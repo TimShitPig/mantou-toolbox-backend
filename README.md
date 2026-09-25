@@ -1,6 +1,6 @@
 # 馒头工具箱后端
 
-为馒头工具箱小程序提供登录、用户资料、小说链接解析与下载接口。后端使用 Node.js 24 和内置 SQLite，无第三方运行时依赖，并兼容前端现有的 `.php` 接口路径。
+为馒头工具箱小程序提供登录、用户资料、小说链接解析与下载接口。后端使用 Node.js 24、内置 SQLite 和 Python 番茄正文下载器，并兼容前端现有的 `.php` 接口路径；Node 部分无第三方运行时依赖。
 
 ## 服务器一键部署
 
@@ -11,7 +11,7 @@
 mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 
 # 下载并运行部署准备脚本
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/deploy/docker-deploy.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 
 # 启动单容器服务
 docker compose up -d --remove-orphans
@@ -30,11 +30,13 @@ docker compose logs -f backend
 
 ```sh
 cd /root/mantou-toolbox-deploy
-curl -sSL https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/deploy/docker-deploy.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 docker compose up -d --remove-orphans
 ```
 
 准备脚本会保留 `.env` 密钥和 SQLite 数据卷；之后的常规更新与回退都从后台页面点击完成。
+
+从 `v0.0.5` 或更早版本首次升级到 `v0.0.6` 后，需要执行一次 `docker compose up -d --build`，把 Python 3 和 PyCryptodome 加入运行镜像；之后的源码更新仍由后台直接更新，不需要重建镜像。
 
 ## 自动发布镜像
 
@@ -42,20 +44,21 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.5
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.6
 ```
 
-工作流配置见 [docker-publish.yml](.github/workflows/docker-publish.yml)。GHCR 镜像包仍公开发布；服务器首次部署时从源码构建基础运行容器，后台更新直接覆盖挂载源码，不会每次更新都构建新的本地镜像。
+工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器首次部署时从源码构建基础运行容器，后台更新直接覆盖挂载源码，不会每次更新都构建新的本地镜像。
 
 ## 本地开发
 
-需要 Node.js 24 或更高版本：
+需要 Node.js 24 或更高版本。使用番茄正文下载还需要 Python 3 和 PyCryptodome；Docker 镜像会自动安装它们：
 
 ```powershell
 Copy-Item .env.example .env
 npm start
-npm test
 ```
+
+业务代码按 `src/服务端`、`public/后台界面` 和 `部署` 分类，模块文件均使用中文名。`src/`、`public/`、`server.js`、`supervisor.js` 是已部署版本的更新器入口，必须保留这些兼容路径；Docker、npm 和 GitHub Actions 必需的清单也保留标准文件名。单元测试目录已移除。
 
 本地运行管理面板时，在 `.env` 中设置 `ADMIN_PASSWORD`。
 
@@ -73,9 +76,9 @@ npm test
 
 ## 内容来源配置
 
-解析接口可识别七猫和番茄链接。设置 `REMOTE_METADATA_ENABLED=true` 后会尝试请求平台元数据；平台响应可能随时变化。
+解析接口可识别七猫和番茄链接。番茄详情、章节目录和正文分别通过番茄畅听 App 的 `/novelfm/bookapi/detail/v1/`、`/novelfm/bookapi/directory/all_items_v2/v1/`（失败时改用 App 的 v1 目录接口）和 `/novelfm/playerapi/full/mget/v1/` 获取，不请求小说网页；封面 URL 由 App 详情返回，并通过后端图片代理读取 `novelfmpic.com` 图片 CDN。七猫元数据仍由 `REMOTE_METADATA_ENABLED=true` 控制。
 
-下载生成接口会创建后台任务。需要生成正文时，可以配置本地授权内容目录 `CONTENT_CATALOG_FILE`，或配置返回正文的 `CONTENT_PROVIDER_URL`。
+番茄下载任务会调用内置正文下载器，读取目录、每次最多批量请求 1500 章、下载并解密章节，最后生成合并 TXT；章节总数和完成数会回报到现有下载进度接口。Docker 镜像会安装 Python 3 和 PyCryptodome。七猫正文仍可通过本地内容目录或 `CONTENT_PROVIDER_URL` 接入。
 
 本地 JSON 内容目录示例：
 
@@ -90,7 +93,7 @@ npm test
 ]
 ```
 
-内容提供接口接收书籍信息，并返回 `{ "text": "..." }` 或 `{ "chapters": [{ "title": "第一章", "content": "..." }] }`。未配置内容来源时，后端会生成包含书籍资料和来源链接的说明文件，便于验证下载链路。
+内容提供接口接收书籍信息，并返回 `{ "text": "..." }` 或 `{ "chapters": [{ "title": "第一章", "content": "..." }] }`。七猫未配置正文来源时，后端会生成包含书籍资料和来源链接的说明文件，便于验证下载链路。
 
 ## 生产配置
 

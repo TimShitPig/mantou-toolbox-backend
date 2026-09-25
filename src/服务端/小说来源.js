@@ -1,4 +1,5 @@
 const fs = require('node:fs/promises')
+const { getFanqieBookDetails } = require('./番茄小说下载')
 
 const MAX_EXPORT_BYTES = 10 * 1024 * 1024
 
@@ -100,16 +101,27 @@ function pickFirst(source, names) {
   return ''
 }
 
+function fanqieCoverUrl(source) {
+  const direct = pickFirst(source, ['coverUrl', 'cover', 'cover_url', 'thumb_url', 'audio_thumb_uri', 'image'])
+  if (direct) return direct
+  try {
+    const variants = JSON.parse(String(source && source.thumb_url_map_v2 || '{}'))
+    return pickFirst(variants, ['large_square_thumb_url', 'small_square_thumb_url'])
+  } catch {
+    return ''
+  }
+}
+
 function normalizeBook(candidate, identity) {
   const source = candidate && typeof candidate === 'object' ? candidate : {}
   return {
-    coverUrl: text(pickFirst(source, ['coverUrl', 'cover', 'cover_url', 'image']), 2048),
+    coverUrl: text(fanqieCoverUrl(source), 2048),
     title: text(pickFirst(source, ['title', 'bookName', 'book_name', 'name']), 256)
       || fallbackBook(identity).title,
     author: text(pickFirst(source, ['author', 'authorName', 'author_name']), 256) || '待获取',
     status: normalizeStatus(pickFirst(source, ['status', 'bookStatus', 'book_status'])),
-    wordCount: formatWordCount(pickFirst(source, ['wordCount', 'word_count', 'words', 'wordNum'])),
-    chapterCount: text(pickFirst(source, ['chapterCount', 'chapter_count', 'chapters']), 64) || '待获取',
+    wordCount: formatWordCount(pickFirst(source, ['wordCount', 'word_count', 'word_number', 'words', 'wordNum'])),
+    chapterCount: text(pickFirst(source, ['chapterCount', 'chapter_count', 'chapter_number', 'chapters']), 64) || '待获取',
     intro: text(pickFirst(source, ['intro', 'introduction', 'description', 'abstract']), 8000)
       || fallbackBook(identity).intro,
     source: identity.source,
@@ -133,28 +145,17 @@ async function requestJson(url, config) {
 }
 
 async function fetchRemoteMetadata(identity, config) {
-  if (identity.source === 'qimao') {
-    const endpoint = new URL('https://api-bc.wtzw.com/api/v1/h5/adapt-reader')
-    endpoint.searchParams.set('book_id', identity.sourceBookId)
-    endpoint.searchParams.set('page', '1')
-    const payload = await requestJson(endpoint, config)
-    const candidate = payload && (payload.data || payload.book || payload)
-    return normalizeBook(candidate, identity)
-  }
+  const endpoint = new URL('https://api-bc.wtzw.com/api/v1/h5/adapt-reader')
+  endpoint.searchParams.set('book_id', identity.sourceBookId)
+  endpoint.searchParams.set('page', '1')
+  const payload = await requestJson(endpoint, config)
+  const candidate = payload && (payload.data || payload.book || payload)
+  return normalizeBook(candidate, identity)
+}
 
-  const response = await fetch(identity.originalUrl, {
-    headers: {
-      Accept: 'text/html,application/xhtml+xml',
-      'User-Agent': 'MantouToolboxBackend/1.0',
-    },
-    signal: AbortSignal.timeout(config.remoteRequestTimeoutMs),
-  })
-  if (!response.ok) {
-    throw new Error(`metadata_status_${response.status}`)
-  }
-  const html = await response.text()
-  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
-  return normalizeBook({ title: titleMatch && titleMatch[1] }, identity)
+async function fetchFanqieAppMetadata(identity) {
+  const detail = await getFanqieBookDetails(identity.sourceBookId)
+  return normalizeBook(detail && (detail.data || detail.book || detail), identity)
 }
 
 async function parseNovel(link, config) {
@@ -162,7 +163,13 @@ async function parseNovel(link, config) {
   let book = fallbackBook(identity)
   let warning = ''
 
-  if (config.remoteMetadataEnabled) {
+  if (identity.source === 'fanqie') {
+    try {
+      book = await fetchFanqieAppMetadata(identity)
+    } catch (error) {
+      warning = `fanqie_app_metadata_failed: ${text(error && error.message, 160)}`
+    }
+  } else if (config.remoteMetadataEnabled) {
     try {
       book = await fetchRemoteMetadata(identity, config)
     } catch (error) {

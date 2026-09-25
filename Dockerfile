@@ -10,9 +10,9 @@ ENV NODE_ENV=production \
     PORT=8787 \
     APP_BASE_URL=http://127.0.0.1:8787
 
-# The backend has no third-party runtime dependencies. Copy only deployable code.
+# Copy only runtime files; Python is used by the Fanqie novel text downloader.
 COPY package.json ./
-COPY server.js ./
+COPY server.js ./server.js
 COPY supervisor.js /usr/local/lib/mantou-supervisor.js
 COPY src ./src
 COPY public ./public
@@ -20,7 +20,7 @@ COPY public ./public
 USER root
 RUN sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tar \
+    && apt-get install -y --no-install-recommends ca-certificates tar python3 python3-pycryptodome \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /app/storage/avatars /app/storage/downloads \

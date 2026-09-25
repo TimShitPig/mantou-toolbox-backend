@@ -1,5 +1,5 @@
-const { createApp } = require('./src/app')
-const { createConfig } = require('./src/config')
+const { createApp } = require('./src/服务端/应用')
+const { createConfig } = require('./src/服务端/配置')
 
 const config = createConfig()
 const app = createApp({ config })

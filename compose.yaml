@@ -40,7 +40,7 @@ services:
       REMOTE_METADATA_ENABLED: "${REMOTE_METADATA_ENABLED:-false}"
       CONTENT_CATALOG_FILE: "${CONTENT_CATALOG_FILE:-}"
       CONTENT_PROVIDER_URL: "${CONTENT_PROVIDER_URL:-}"
-      IMAGE_PROXY_ALLOWLIST: "${IMAGE_PROXY_ALLOWLIST:-qimao.com,wtzw.com,fanqienovel.com,fqnovel.com,changdunovel.com}"
+      IMAGE_PROXY_ALLOWLIST: "${IMAGE_PROXY_ALLOWLIST:-qimao.com,wtzw.com,fanqienovel.com,fqnovel.com,changdunovel.com,novelfmpic.com}"
     volumes:
       - ./source:/app:rw
       - mantou-storage:/app/storage

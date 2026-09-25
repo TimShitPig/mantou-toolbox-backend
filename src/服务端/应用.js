@@ -8,11 +8,11 @@ const {
   requireAdmin,
   revokeAdminSession,
   verifyAdminPassword,
-} = require('./admin-auth')
-const { createAuth, AuthError } = require('./auth')
-const { createConfig } = require('./config')
-const { createDatabase } = require('./database')
-const { createSelfUpdater } = require('./self-updater')
+} = require('./管理员认证')
+const { createAuth, AuthError } = require('./用户认证')
+const { createConfig } = require('./配置')
+const { createDatabase } = require('./数据库')
+const { createSelfUpdater } = require('./自更新')
 const {
   ApiError,
   corsHeaders,
@@ -24,14 +24,15 @@ const {
   sendEmpty,
   sendError,
   sendJson,
-} = require('./http')
+} = require('./HTTP响应')
 const {
   buildDownloadText,
   buildFileName,
   identifyNovelLink,
   normalizeRequestedBook,
   parseNovel,
-} = require('./providers')
+} = require('./小说来源')
+const { downloadFanqieNovel } = require('./番茄小说下载')
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 const MAX_PROXY_BYTES = 5 * 1024 * 1024
@@ -246,6 +247,7 @@ function createApp(options = {}) {
   const config = options.config || createConfig(options.env)
   const store = options.store || createDatabase(config.databasePath)
   const auth = options.auth || createAuth(store, config, options.fetchImpl)
+  const fanqieDownloader = options.fanqieDownloader || downloadFanqieNovel
   const updateFetch = options.updateFetchImpl || options.fetchImpl || globalThis.fetch
   const proxyFetch = options.proxyFetchImpl || options.fetchImpl || globalThis.fetch
   let server = null
@@ -328,10 +330,10 @@ function createApp(options = {}) {
   async function handleAdminAsset(req, res, pathname, origin) {
     assertMethod(req, 'GET')
     const assets = {
-      '/admin': ['admin.html', 'text/html; charset=utf-8'],
-      '/admin/': ['admin.html', 'text/html; charset=utf-8'],
-      '/admin.css': ['admin.css', 'text/css; charset=utf-8'],
-      '/admin.js': ['admin.js', 'text/javascript; charset=utf-8'],
+      '/admin': ['管理后台.html', 'text/html; charset=utf-8'],
+      '/admin/': ['管理后台.html', 'text/html; charset=utf-8'],
+      '/admin.css': ['管理后台.css', 'text/css; charset=utf-8'],
+      '/admin.js': ['管理后台.js', 'text/javascript; charset=utf-8'],
     }
     const asset = assets[pathname]
     if (!asset) {
@@ -339,7 +341,7 @@ function createApp(options = {}) {
     }
     let body
     try {
-      body = await fs.readFile(path.join(config.rootDir, 'public', asset[0]))
+      body = await fs.readFile(path.join(config.rootDir, 'public', '后台界面', asset[0]))
     } catch {
       throw new ApiError(404, 'admin_asset_not_found')
     }
@@ -597,7 +599,21 @@ function createApp(options = {}) {
 
     try {
       const runtimeConfig = getRuntimeConfig()
-      const text = await buildDownloadText(runtimeConfig, job.book, job.link)
+      let result
+      if (job.source === 'fanqie') {
+        result = await fanqieDownloader({
+          bookId: job.book.sourceBookId,
+          outputDir: config.downloadDir,
+          onProgress: ({ total, completed }) => {
+            if (typeof store.updateJobProgress === 'function') {
+              store.updateJobProgress(job.id, total, completed)
+            }
+          },
+        })
+      } else {
+        result = { text: await buildDownloadText(runtimeConfig, job.book, job.link) }
+      }
+      const text = result.text
       const output = Buffer.from(String(text || ''), 'utf8')
       if (!output.length) {
         throw new Error('download_content_empty')
@@ -605,12 +621,13 @@ function createApp(options = {}) {
       const filePath = path.join(config.downloadDir, `${job.id}.txt`)
       await fs.writeFile(filePath, output, { mode: 0o600 })
       const manifest = {
-        fileName: buildFileName(job.book),
+        fileName: result.fileName || buildFileName(job.book),
         size: output.length,
         meta: {
           title: job.book.title,
           author: job.book.author,
           status: job.book.status,
+          chapterCount: result.chapterCount || null,
         },
         panLinks: [],
         directLinkEnabled: runtimeConfig.cloudDirectLinkEnabled,
