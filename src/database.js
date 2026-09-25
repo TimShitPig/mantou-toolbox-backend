@@ -213,7 +213,12 @@ function createDatabase(databasePath) {
          (SELECT COUNT(*) FROM system_logs WHERE level = 'error' AND created_at >= ?) AS errors_24h`
     ),
     adminJobs: db.prepare('SELECT * FROM download_jobs ORDER BY created_at DESC LIMIT ?'),
-    adminSystemLogs: db.prepare('SELECT * FROM system_logs ORDER BY created_at DESC, rowid DESC LIMIT ?'),
+    adminSystemLogs: db.prepare(
+      `SELECT * FROM system_logs
+       WHERE NOT (source = 'http' AND status_code = 404)
+         AND NOT (source = 'http' AND status_code = 401 AND message LIKE '%admin_login_required%')
+       ORDER BY created_at DESC, rowid DESC LIMIT ?`
+    ),
   }
 
   function upsertUser(provider, subject, profile) {

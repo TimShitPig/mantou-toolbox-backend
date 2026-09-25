@@ -97,12 +97,19 @@
             <div><p class="eyebrow">RUNTIME LOGS</p><h2>运行日志</h2></div>
             <span id="log-count" class="section-state">最近 100 条</span>
           </div>
-          <section class="activity-section page-section">
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>级别</th><th>来源</th><th>请求</th><th>状态</th><th>事件</th><th>时间</th></tr></thead>
-                <tbody id="logs-body"><tr><td class="empty-cell" colspan="6">暂无运行日志</td></tr></tbody>
-              </table>
+          <section class="runtime-log-view" aria-label="系统运行日志">
+            <div class="log-toolbar">
+              <div class="log-level-filters" role="group" aria-label="日志级别筛选">
+                <label class="log-level-filter log-level-debug"><input type="checkbox" value="debug" checked><span>DEBUG</span></label>
+                <label class="log-level-filter log-level-info"><input type="checkbox" value="info" checked><span>INFO</span></label>
+                <label class="log-level-filter log-level-warn"><input type="checkbox" value="warn" checked><span>WARNING</span></label>
+                <label class="log-level-filter log-level-error"><input type="checkbox" value="error" checked><span>ERROR</span></label>
+                <label class="log-level-filter log-level-critical"><input type="checkbox" value="critical" checked><span>CRITICAL</span></label>
+              </div>
+              <label class="log-auto-scroll"><input id="log-auto-scroll" type="checkbox" checked><span>自动滚动</span></label>
+            </div>
+            <div id="logs-body" class="runtime-log-stream" role="log" aria-live="off" tabindex="0">
+              <p class="log-empty">暂无运行日志</p>
             </div>
           </section>
         </section>
@@ -243,6 +250,16 @@
             </div>
           </div>
         </fieldset>
+        <section id="update-progress-panel" class="update-progress-panel" aria-live="polite" aria-atomic="true" hidden>
+          <div class="update-progress-heading">
+            <strong id="update-progress-stage">正在更新</strong>
+            <span id="update-progress-value">处理中</span>
+          </div>
+          <div id="update-progress-track" class="update-progress-track" role="progressbar" aria-label="更新进度" aria-valuemin="0" aria-valuemax="100">
+            <span id="update-progress-fill"></span>
+          </div>
+          <p id="update-progress-detail" class="update-progress-detail"></p>
+        </section>
         <p id="update-action-message" class="update-action-message form-message" role="status" aria-live="polite"></p>
         <button id="apply-update-button" class="button button-primary button-wide" type="button" disabled>立即更新</button>
         <div class="rollback-action">

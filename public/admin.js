@@ -6,6 +6,8 @@
   const loginMessage = document.getElementById('login-message')
   const navItems = [...document.querySelectorAll('.nav-item')]
   const updateDialog = document.getElementById('update-dialog')
+  const logLevelFilters = [...document.querySelectorAll('.log-level-filter input')]
+  const logAutoScroll = document.getElementById('log-auto-scroll')
   const proxyHosts = {
     github: null,
     edgeone: 'https://edgeone.gh-proxy.com',
@@ -25,6 +27,10 @@
   let updatePollTimer = null
   let activeOperationId = ''
   let lastKnownOperationState = ''
+  let activePage = 'novel'
+  let logPollTimer = null
+  let logRefreshPending = false
+  let systemLogItems = []
 
   const settingForms = {
     novel: {
@@ -52,9 +58,20 @@
     element.className = `form-message${type ? ` ${type}` : ''}`
   }
 
+  function updateLogPolling() {
+    const shouldPoll = !dashboardView.hidden && activePage === 'logs'
+    if (!shouldPoll && logPollTimer) {
+      clearInterval(logPollTimer)
+      logPollTimer = null
+    } else if (shouldPoll && !logPollTimer) {
+      logPollTimer = window.setInterval(refreshLatestLogs, 2500)
+    }
+  }
+
   function showLogin(message) {
     dashboardView.hidden = true
     loginView.hidden = false
+    updateLogPolling()
     document.getElementById('admin-password').focus()
     if (message) setMessage(loginMessage, message, 'error')
   }
@@ -62,22 +79,24 @@
   function showDashboard() {
     loginView.hidden = true
     dashboardView.hidden = false
+    updateLogPolling()
   }
 
   function setPage(page, updateHash = true) {
-    const selectedPage = pageNames.includes(page) ? page : 'novel'
+    activePage = pageNames.includes(page) ? page : 'novel'
     for (const name of pageNames) {
-      document.getElementById(`page-${name}`).hidden = name !== selectedPage
+      document.getElementById(`page-${name}`).hidden = name !== activePage
     }
     for (const item of navItems) {
-      const active = item.dataset.page === selectedPage
+      const active = item.dataset.page === activePage
       item.classList.toggle('is-active', active)
       if (active) item.setAttribute('aria-current', 'page')
       else item.removeAttribute('aria-current')
     }
-    if (updateHash && location.hash !== `#${selectedPage}`) {
-      history.replaceState(null, '', `#${selectedPage}`)
+    if (updateHash && location.hash !== `#${activePage}`) {
+      history.replaceState(null, '', `#${activePage}`)
     }
+    updateLogPolling()
   }
 
   async function api(path, options = {}) {
@@ -164,27 +183,64 @@
 
   function renderSystemLogs(items) {
     const body = document.getElementById('logs-body')
+    const scrollTop = body.scrollTop
+    systemLogItems = items
+    const selectedLevels = new Set(logLevelFilters.filter((filter) => filter.checked).map((filter) => filter.value))
+    const visibleItems = items
+      .filter((item) => selectedLevels.has(String(item.level || 'info').toLowerCase()))
+      .reverse()
     body.replaceChildren()
-    document.getElementById('log-count').textContent = `最近 ${items.length} 条`
-    if (!items.length) {
-      const row = document.createElement('tr')
-      appendCell(row, '暂无运行日志', 'empty-cell').colSpan = 6
-      body.appendChild(row)
+    document.getElementById('log-count').textContent = `${visibleItems.length} / ${items.length} 条`
+    if (!visibleItems.length) {
+      const empty = document.createElement('p')
+      empty.className = 'log-empty'
+      empty.textContent = items.length ? '当前筛选没有日志' : '暂无运行日志'
+      body.appendChild(empty)
       return
     }
-    for (const item of items) {
-      const row = document.createElement('tr')
-      const level = appendCell(row, String(item.level || 'info').toUpperCase())
-      if (item.level === 'error') level.className = 'level-error'
-      if (item.level === 'warn') level.className = 'level-warn'
-      appendCell(row, item.source || 'server', 'cell-muted')
-      appendCell(row, item.method ? `${item.method} ${item.path || ''}` : (item.path || '—'), 'cell-muted')
-      const statusCode = appendCell(row, item.statusCode || '—', 'cell-muted')
-      if (item.statusCode >= 500) statusCode.className = 'cell-error'
-      else if (item.statusCode >= 400) statusCode.className = 'level-warn'
-      appendCell(row, item.message || '—')
-      appendCell(row, formatDate(item.createdAt), 'cell-muted')
+    for (const item of visibleItems) {
+      const level = String(item.level || 'info').toLowerCase()
+      const row = document.createElement('div')
+      row.className = `runtime-log-entry log-${level}`
+
+      const time = new Date(Number(item.createdAt) || 0)
+      const pad = (value) => String(value).padStart(2, '0')
+      const timeCell = document.createElement('span')
+      timeCell.className = 'runtime-log-time'
+      timeCell.textContent = Number.isNaN(time.getTime())
+        ? '--/-- --:--:--'
+        : `${pad(time.getMonth() + 1)}/${pad(time.getDate())} ${pad(time.getHours())}:${pad(time.getMinutes())}:${pad(time.getSeconds())}`
+
+      const levelCell = document.createElement('span')
+      levelCell.className = 'runtime-log-level'
+      levelCell.textContent = level.toUpperCase()
+
+      const sourceCell = document.createElement('span')
+      sourceCell.className = 'runtime-log-source'
+      sourceCell.textContent = item.source || 'server'
+
+      const messageCell = document.createElement('span')
+      messageCell.className = 'runtime-log-message'
+      const request = [item.method, item.path].filter(Boolean).join(' ')
+      const details = [request, item.statusCode ? String(item.statusCode) : '', item.message || ''].filter(Boolean)
+      messageCell.textContent = details.join(' ') || '—'
+
+      row.append(timeCell, levelCell, sourceCell, messageCell)
       body.appendChild(row)
+    }
+    if (logAutoScroll.checked) body.scrollTop = body.scrollHeight
+    else body.scrollTop = scrollTop
+  }
+
+  async function refreshLatestLogs() {
+    if (logRefreshPending || dashboardView.hidden || activePage !== 'logs') return
+    logRefreshPending = true
+    try {
+      const summary = await api('/api/admin/summary')
+      latestData = summary
+      if (!dashboardView.hidden && activePage === 'logs') renderSystemLogs(summary.systemLogs || [])
+    } catch {} finally {
+      logRefreshPending = false
     }
   }
 
@@ -339,6 +395,7 @@
     setText('latest-version', '--')
     setText('available-version', '')
     document.getElementById('update-available').hidden = true
+    renderUpdateProgress(null)
     setMessage(document.getElementById('update-action-message'), '', '')
     document.getElementById('apply-update-button').disabled = true
     document.getElementById('apply-rollback-button').disabled = true
@@ -397,11 +454,65 @@
     })[operation.state] || '正在处理更新…'
   }
 
+  function formatBytes(value) {
+    const bytes = Math.max(0, Number(value) || 0)
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  function renderUpdateProgress(operation) {
+    const panel = document.getElementById('update-progress-panel')
+    const track = document.getElementById('update-progress-track')
+    const fill = document.getElementById('update-progress-fill')
+    if (!operation || !['downloading', 'applying', 'restarting', 'rolling_back'].includes(operation.state)) {
+      panel.hidden = true
+      track.classList.remove('is-indeterminate')
+      track.removeAttribute('aria-valuenow')
+      fill.style.width = '0%'
+      return
+    }
+
+    panel.hidden = false
+    const stageLabels = {
+      downloading: `正在下载 ${operation.version}`,
+      applying: operation.action === 'rollback' ? '正在应用回退版本' : '正在替换源码',
+      restarting: '正在重启并检查服务',
+      rolling_back: `启动检查未通过，正在恢复 ${operation.fallbackVersion}`,
+    }
+    document.getElementById('update-progress-stage').textContent = stageLabels[operation.state]
+
+    const hasDownloadProgress = operation.state === 'downloading' && Number.isFinite(operation.progress)
+    if (hasDownloadProgress) {
+      const percent = Math.max(0, Math.min(100, Math.floor(operation.progress)))
+      track.classList.remove('is-indeterminate')
+      track.setAttribute('aria-valuenow', String(percent))
+      fill.style.width = `${percent}%`
+      document.getElementById('update-progress-value').textContent = `${percent}%`
+      document.getElementById('update-progress-detail').textContent = `${formatBytes(operation.downloadedBytes)} / ${formatBytes(operation.totalBytes)}`
+      return
+    }
+
+    track.classList.add('is-indeterminate')
+    track.removeAttribute('aria-valuenow')
+    fill.style.width = ''
+    document.getElementById('update-progress-value').textContent = operation.state === 'downloading'
+      ? `${formatBytes(operation.downloadedBytes)} 已下载`
+      : '进行中'
+    document.getElementById('update-progress-detail').textContent = ({
+      downloading: '正在连接所选镜像并读取源码包',
+      applying: '源码包已校验，正在替换运行文件',
+      restarting: '新源码已应用，正在等待健康检查',
+      rolling_back: '正在恢复备份并启动旧版本',
+    })[operation.state]
+  }
+
   function renderUpdateOperation(operation) {
     const updateButton = document.getElementById('apply-update-button')
     const rollbackButton = document.getElementById('apply-rollback-button')
     const active = operation && ['downloading', 'applying', 'restarting', 'rolling_back'].includes(operation.state)
     lastKnownOperationState = operation.state
+    renderUpdateProgress(operation)
     updateButton.disabled = Boolean(active) || !updateInfo || !updateInfo.hasUpdate || !updateInfo.latestVersion
     rollbackButton.disabled = Boolean(active) || !updateInfo || !updateInfo.rollbackVersions.length
     setMessage(
@@ -556,6 +667,9 @@
 
   for (const item of navItems) {
     item.addEventListener('click', () => setPage(item.dataset.page))
+  }
+  for (const filter of logLevelFilters) {
+    filter.addEventListener('change', () => renderSystemLogs(systemLogItems))
   }
   window.addEventListener('hashchange', () => setPage(location.hash.slice(1), false))
   for (const radio of proxyRadios) {

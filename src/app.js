@@ -948,14 +948,17 @@ function createApp(options = {}) {
       throw new ApiError(404, 'not_found')
     } catch (error) {
       const statusCode = Number(error && error.status) || 500
-      const level = statusCode >= 500 ? 'error' : 'warn'
-      recordSystemLog(level, 'http', `HTTP ${statusCode} ${req.method} ${pathname}: ${String(error && error.message || 'request_failed')}`, {
-        requestId,
-        method: req.method,
-        path: pathname,
-        statusCode,
-        meta: { errorName: String(error && error.name || 'Error') },
-      })
+      const routineAuthMiss = statusCode === 401 && String(error && error.message) === 'admin_login_required'
+      if (statusCode !== 404 && !routineAuthMiss) {
+        const level = statusCode >= 500 ? 'error' : 'warn'
+        recordSystemLog(level, 'http', `HTTP ${statusCode} ${req.method} ${pathname}: ${String(error && error.message || 'request_failed')}`, {
+          requestId,
+          method: req.method,
+          path: pathname,
+          statusCode,
+          meta: { errorName: String(error && error.name || 'Error') },
+        })
+      }
       sendError(res, config, error, origin)
     }
   }

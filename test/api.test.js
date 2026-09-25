@@ -173,12 +173,19 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.match(adminMarkup, /馒头工具箱/)
     assert.match(adminMarkup, /RUNTIME LOGS/)
     assert.match(adminMarkup, /运行日志/)
+    assert.match(adminMarkup, /role="log"/)
+    assert.match(adminMarkup, /id="log-auto-scroll"/)
+    for (const level of ['debug', 'info', 'warn', 'error', 'critical']) {
+      assert.match(adminMarkup, new RegExp(`class="log-level-filter log-level-${level}"`))
+    }
     assert.doesNotMatch(adminMarkup, /CLIENT REPORTS/)
     assert.match(adminMarkup, /aria-label="后台导航"/)
     assert.match(adminMarkup, /id="update-button"/)
     assert.match(adminMarkup, /id="update-dialog"/)
     assert.match(adminMarkup, /id="apply-update-button"/)
     assert.match(adminMarkup, /id="apply-rollback-button"/)
+    assert.match(adminMarkup, /id="update-progress-panel"/)
+    assert.match(adminMarkup, /aria-label="更新进度"/)
     assert.match(adminMarkup, /立即更新/)
     assert.match(adminMarkup, /立即回退/)
     assert.doesNotMatch(adminMarkup, /复制更新命令/)
@@ -197,8 +204,10 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     const adminScript = await adminScriptResponse.text()
     assert.match(adminScript, /\/api\/admin\/update/)
     assert.match(adminScript, /refreshUpdateOperation/)
+    assert.match(adminScript, /renderUpdateProgress/)
     assert.doesNotMatch(adminScript, /update-source\.sh/)
     assert.match(adminScript, /renderSystemLogs/)
+    assert.match(adminScript, /refreshLatestLogs/)
     assert.match(adminScript, /renderVersionHistory/)
     assert.match(adminScript, /Promise\.all\(proxyRadios\.map/)
     for (const page of ['novel', 'logs', 'data', 'ads', 'status']) {
@@ -381,6 +390,9 @@ test('HTTP API workflow starts a real server and persists local state', async ()
     assert.match(setCookie, /SameSite=Strict/)
     const adminCookie = setCookie.split(';')[0]
 
+    const scanProbe = await requestJson(baseUrl, '/HNAP1')
+    assert.equal(scanProbe.response.status, 404)
+
     const adminSummary = await requestJson(baseUrl, '/api/admin/summary', {
       headers: { Cookie: adminCookie },
     })
@@ -395,6 +407,8 @@ test('HTTP API workflow starts a real server and persists local state', async ()
       && entry.method === 'POST'
       && entry.path === '/api/admin/login'
       && entry.statusCode === 401))
+    assert.ok(adminSummary.payload.data.systemLogs.every((entry) => entry.statusCode !== 404))
+    assert.ok(adminSummary.payload.data.systemLogs.every((entry) => !entry.message.includes('admin_login_required')))
     assert.ok(adminSummary.payload.data.systemLogs.every((entry) => !entry.message.includes('client-only-marker')))
 
     const proxyTest = await requestJson(baseUrl, '/api/admin/proxies/test', {

@@ -106,6 +106,15 @@ h1, h2, h3, p { margin-top: 0; }
 .version-select { width: 100%; min-width: 0; height: 36px; padding: 0 9px; border: 1px solid #cbd5d1; border-radius: 4px; background: #fff; color: var(--ink); font: inherit; font-size: 12px; }
 .version-select:focus-visible { border-color: var(--green); outline: 3px solid rgba(8,127,99,.12); }
 .update-action-message { min-height: 18px; }
+.update-progress-panel { display: grid; gap: 8px; padding: 12px; border: 1px solid #cfe2da; border-radius: 4px; background: #f3f8f5; }
+.update-progress-heading { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 12px; }
+.update-progress-heading strong { min-width: 0; color: #25473b; font-size: 12px; }
+.update-progress-heading span { flex: 0 0 auto; color: #47685d; font-size: 11px; font-variant-numeric: tabular-nums; }
+.update-progress-track { position: relative; height: 8px; overflow: hidden; border-radius: 4px; background: #dce8e2; }
+.update-progress-track > span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--green); transition: width .25s ease; }
+.update-progress-track.is-indeterminate > span { width: 34%; animation: update-progress-sweep 1.3s ease-in-out infinite alternate; }
+.update-progress-detail { min-height: 14px; margin: 0; color: #65756e; font-size: 10px; font-variant-numeric: tabular-nums; }
+@keyframes update-progress-sweep { from { transform: translateX(-105%); } to { transform: translateX(305%); } }
 
 .app-shell { min-height: 100vh; }
 .topbar { display: flex; min-height: 66px; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
@@ -179,6 +188,30 @@ td.empty-cell { height: 58px; color: #8a979b; text-align: center; vertical-align
 .status-pill.failed { background: #fbebea; color: var(--red); }
 .level-error { color: var(--red); font-weight: 700; }
 .level-warn { color: var(--amber); font-weight: 700; }
+.runtime-log-view { overflow: hidden; border: 1px solid #343b42; border-radius: 5px; background: #202429; }
+.log-toolbar { display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 12px; border-bottom: 1px solid #3a4249; background: #292e34; }
+.log-level-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.log-level-filter { display: inline-flex; min-height: 27px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid #485159; border-radius: 4px; color: #c2c9cd; cursor: pointer; font-size: 10px; font-weight: 750; }
+.log-level-filter input, .log-auto-scroll input { width: 14px; height: 14px; margin: 0; accent-color: #9aa7ad; }
+.log-level-filter input:focus-visible, .log-auto-scroll input:focus-visible { outline: 2px solid #a4d9c9; outline-offset: 2px; }
+.log-level-info span { color: #75c6d3; }
+.log-level-warn span { color: #efc06b; }
+.log-level-error span { color: #f0837d; }
+.log-level-critical span { color: #ef83a3; }
+.log-auto-scroll { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; color: #d3d9dc; cursor: pointer; font-size: 11px; white-space: nowrap; }
+.runtime-log-stream { height: clamp(320px, 65vh, 720px); overflow: auto; padding: 8px 10px; background: #1d2126; color: #d3d9dc; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; font-size: 12px; line-height: 1.55; scrollbar-color: #586169 #24292e; }
+.runtime-log-entry { display: grid; grid-template-columns: 132px 76px 110px minmax(0, 1fr); gap: 8px; align-items: start; padding: 5px 7px; border-radius: 3px; overflow-wrap: anywhere; }
+.runtime-log-entry:hover { background: #282e34; }
+.runtime-log-time { color: #829197; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.runtime-log-level { font-weight: 800; white-space: nowrap; }
+.runtime-log-entry.log-debug .runtime-log-level { color: #9aa4aa; }
+.runtime-log-entry.log-info .runtime-log-level { color: #72c4d2; }
+.runtime-log-entry.log-warn .runtime-log-level { color: #efc06b; }
+.runtime-log-entry.log-error .runtime-log-level { color: #f0837d; }
+.runtime-log-entry.log-critical .runtime-log-level { color: #ef83a3; }
+.runtime-log-source { color: #a6b1b6; overflow-wrap: anywhere; }
+.runtime-log-message { min-width: 0; color: #d3d9dc; white-space: pre-wrap; overflow-wrap: anywhere; }
+.log-empty { margin: 0; padding: 18px 8px; color: #99a4a9; text-align: center; }
 .status-detail { display: grid; gap: 8px; width: min(100%, 440px); padding: 18px; }
 .status-detail strong { color: var(--ink); font-size: 20px; font-variant-numeric: tabular-nums; }
 
@@ -213,4 +246,9 @@ td.empty-cell { height: 58px; color: #8a979b; text-align: center; vertical-align
   .proxy-test-row .proxy-result { grid-column: 2; grid-row: 2; }
   .rollback-controls { grid-template-columns: minmax(0, 1fr); }
   .rollback-controls .button { width: 100%; }
+  .log-toolbar { align-items: flex-start; flex-direction: column; }
+  .runtime-log-stream { height: 62vh; min-height: 300px; }
+  .runtime-log-entry { grid-template-columns: 104px 64px minmax(0, 1fr); gap: 5px; }
+  .runtime-log-source { grid-column: 3; }
+  .runtime-log-message { grid-column: 1 / -1; }
 }

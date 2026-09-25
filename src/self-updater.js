@@ -121,7 +121,7 @@ function createSelfUpdater(options = {}) {
           callback(new Error('update_archive_too_large'))
           return
         }
-        if (downloadedBytes - lastSavedBytes >= 1024 * 1024) {
+        if (downloadedBytes - lastSavedBytes >= 64 * 1024) {
           lastSavedBytes = downloadedBytes
           progressQueue = progressQueue.then(() => saveProgress(operation, downloadedBytes, contentLength))
         }
