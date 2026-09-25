@@ -38,6 +38,7 @@ const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 const MAX_PROXY_BYTES = 5 * 1024 * 1024
 const UPDATE_REPOSITORY = 'TimShitPig/mantou-toolbox-backend'
 const UPDATE_CACHE_MS = 60 * 1000
+const PUBLISH_WORKFLOW_NAMES = new Set(['Publish Docker image', '发布 Docker 镜像'])
 const GITHUB_PROXIES = Object.freeze({
   github: null,
   edgeone: 'https://edgeone.gh-proxy.com',
@@ -436,7 +437,7 @@ function createApp(options = {}) {
 
       const publishedRuns = new Map()
       for (const run of runs.workflow_runs) {
-        if (run.name !== 'Publish Docker image' || run.status !== 'completed' || run.conclusion !== 'success') continue
+        if (!PUBLISH_WORKFLOW_NAMES.has(String(run.name || '')) || run.status !== 'completed' || run.conclusion !== 'success') continue
         const revision = String(run.head_sha || '').toLowerCase()
         if (!/^[a-f0-9]{40}$/.test(revision)) continue
         const existing = publishedRuns.get(revision)

@@ -36,7 +36,7 @@ docker compose up -d --remove-orphans
 
 准备脚本会保留 `.env` 密钥和 SQLite 数据卷；之后的常规更新与回退都从后台页面点击完成。
 
-从 `v0.0.5` 或更早版本首次升级到 `v0.0.6` 后，需要执行一次 `docker compose up -d --build`，把 Python 3 和 PyCryptodome 加入运行镜像；之后的源码更新仍由后台直接更新，不需要重建镜像。
+首次启用番茄正文下载器时，需要执行一次 `docker compose up -d --build`，把 Python 3 和 PyCryptodome 加入运行镜像；之后的源码更新仍由后台直接更新，不需要重建镜像。
 
 ## 自动发布镜像
 
@@ -44,7 +44,7 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.6
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.7
 ```
 
 工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器首次部署时从源码构建基础运行容器，后台更新直接覆盖挂载源码，不会每次更新都构建新的本地镜像。

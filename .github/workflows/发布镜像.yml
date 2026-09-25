@@ -1,4 +1,4 @@
-name: 发布 Docker 镜像
+name: Publish Docker image
 
 on:
   push:
