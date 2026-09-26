@@ -38,7 +38,7 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.15
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.16
 ```
 
 工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器由后台更新代理从挂载源码重建本地运行镜像，并只清理本服务更新前未使用的旧镜像。

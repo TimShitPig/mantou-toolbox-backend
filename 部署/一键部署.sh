@@ -25,6 +25,7 @@ cleanup() {
       systemctl daemon-reload >/dev/null 2>&1 || true
     elif [ -f "$TEMP_DIR/mantou-toolbox-update-agent.service" ]; then
       systemctl stop mantou-toolbox-update-agent.service >/dev/null 2>&1 || true
+      systemctl disable mantou-toolbox-update-agent.service >/dev/null 2>&1 || true
       rm -f /etc/systemd/system/mantou-toolbox-update-agent.service
       systemctl daemon-reload >/dev/null 2>&1 || true
     fi
@@ -169,7 +170,7 @@ mv "$TEMP_DIR/source" "$PWD/source"
 chown -R 1000:1000 "$PWD/source"
 chown -R 1000:1000 "$PWD/update-control"
 
-UNIT_DEPLOY_DIR="$(printf '%s' "$PWD" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g')"
+UNIT_DEPLOY_DIR="$(printf '%s' "$PWD" | sed 's/%/%%/g')"
 if [ -f /etc/systemd/system/mantou-toolbox-update-agent.service ]; then
   cp /etc/systemd/system/mantou-toolbox-update-agent.service "$TEMP_DIR/unit.previous"
 fi
@@ -182,13 +183,14 @@ Requires=docker.service
 [Service]
 Type=simple
 WorkingDirectory="$UNIT_DEPLOY_DIR"
-ExecStart=/bin/sh source/宿主机更新代理.sh --watch
+ExecStart=/bin/sh "$UNIT_DEPLOY_DIR/source/宿主机更新代理.sh" --watch "$UNIT_DEPLOY_DIR"
 Restart=always
 RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
 EOF
+systemd-analyze verify "$TEMP_DIR/mantou-toolbox-update-agent.service"
 install -m 0644 "$TEMP_DIR/mantou-toolbox-update-agent.service" /etc/systemd/system/mantou-toolbox-update-agent.service
 systemctl daemon-reload
 systemctl enable --now mantou-toolbox-update-agent.service
