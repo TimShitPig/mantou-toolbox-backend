@@ -40,6 +40,7 @@ const {
 const {
   buildDownloadText,
   buildFileName,
+  formatNovelText,
   identifyNovelLink,
   normalizeRequestedBook,
   parseNovel,
@@ -819,14 +820,19 @@ function createApp(options = {}) {
       } else {
         result = { text: await buildDownloadText(runtimeConfig, job.book, job.link) }
       }
-      const text = result.text
-      const output = Buffer.from(String(text || ''), 'utf8')
-      if (!output.length) {
+      const text = String(result.text || '')
+      if (!text.trim()) {
         throw new Error('download_content_empty')
       }
+      const book = result.book ? normalizeRequestedBook(result.book, {
+        source: job.source,
+        sourceBookId: job.book.sourceBookId,
+        originalUrl: job.link,
+      }) : job.book
+      const output = Buffer.from(formatNovelText(book, text, result.chapterCount), 'utf8')
       const filePath = path.join(config.downloadDir, `${job.id}.txt`)
       await fs.writeFile(filePath, output, { mode: 0o600 })
-      const fileName = buildFileName(job.book)
+      const fileName = buildFileName(book)
       const panLinks = []
       const quarkSettings = getQuarkSettings()
       if (quarkSettings.enabled && quarkSettings.cookie) {
@@ -835,12 +841,12 @@ function createApp(options = {}) {
             cookie: quarkSettings.cookie,
             folderName: quarkSettings.folderName,
             fileName,
-            title: job.book.title,
+            title: book.title,
             content: output,
           })
           panLinks.push(quarkLink)
           recordSystemLog('info', 'quark', 'Novel uploaded and shared on Quark Drive', {
-            meta: { jobId: job.id, title: String(job.book.title || '').slice(0, 128) },
+            meta: { jobId: job.id, title: String(book.title || '').slice(0, 128) },
           })
         } catch (error) {
           const reason = error instanceof QuarkError ? error.code : 'quark_upload_failed'
@@ -853,9 +859,9 @@ function createApp(options = {}) {
         fileName,
         size: output.length,
         meta: {
-          title: job.book.title,
-          author: job.book.author,
-          status: job.book.status,
+          title: book.title,
+          author: book.author,
+          status: book.status,
           chapterCount: result.chapterCount || null,
         },
         panLinks,
@@ -863,7 +869,7 @@ function createApp(options = {}) {
       }
       const quarkShare = panLinks[0]
         ? {
-            title: String(job.book.title || '未命名书籍'),
+            title: String(book.title || '未命名书籍'),
             fileName: manifest.fileName,
             fileId: String(panLinks[0].fileId || ''),
             shareId: String(panLinks[0].shareId || ''),

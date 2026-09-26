@@ -264,30 +264,37 @@ async function requestProviderContent(config, book, link) {
   return text(payload && payload.text, MAX_EXPORT_BYTES) || contentFromChapters(payload && payload.chapters)
 }
 
-function metadataExport(book) {
-  return [
-    book.title,
-    `作者：${book.author}`,
-    `状态：${book.status}`,
-    `字数：${book.wordCount}`,
-    `章节：${book.chapterCount}`,
+function exportStatus(value) {
+  let status = text(value, 64) || '未知'
+  if (status === '连载中') status = '连载'
+  if (['已完结', '已完本', '完本'].includes(status)) status = '完结'
+  return status
+}
+
+function formatNovelText(book, content, chapterCount) {
+  const field = (value, fallback = '待获取') => text(value, 256).replace(/\s+/g, ' ') || fallback
+  const count = field(chapterCount ?? book.chapterCount).replace(/\s*章$/, '')
+  const body = String(content || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim()
+  const header = [
+    '声明：本文件由机器人自动整理生成，仅供个人学习交流和临时阅读使用。内容版权归原作者及相关平台所有，请勿用于商业用途或二次传播。如喜欢本书，请支持正版。',
     '',
-    '---',
-    '本文件由本地开发后端生成，当前只包含书籍资料和来源链接。',
-    '配置 CONTENT_CATALOG_FILE 或 CONTENT_PROVIDER_URL 后可导出已接入的正文内容。',
+    `名称：${field(book.title)}`,
+    `作者：${field(book.author)}`,
+    `状态：${field(exportStatus(book.status))}`,
+    `字数：${field(book.wordCount)}`,
+    `书籍ID：${field(book.sourceBookId)}`,
+    `章节数：${count}`,
     '',
     '简介：',
-    book.intro,
-    '',
-    `来源：${book.originalUrl}`,
-    '',
+    text(book.intro, 8000) || '暂无简介',
   ].join('\n')
+  return `${header}\n\n${body}\n`.replace(/\n/g, '\r\n')
 }
 
 async function buildDownloadText(config, book, link) {
   const catalogContent = await readCatalogContent(config, book)
   const providerContent = catalogContent || await requestProviderContent(config, book, link)
-  return providerContent || metadataExport(book)
+  return providerContent || `正文尚未获取，当前仅包含书籍资料。\n\n来源：${book.originalUrl || link || ''}`
 }
 
 function safeFileStem(value, maximum = 72) {
@@ -307,9 +314,7 @@ function safeFileStem(value, maximum = 72) {
 }
 
 function buildFileName(book) {
-  let status = safeFileStem(book && book.status, 16) || '未知'
-  if (status === '连载中') status = '连载'
-  if (['已完结', '已完本', '完本'].includes(status)) status = '完结'
+  const status = safeFileStem(exportStatus(book && book.status), 16)
   const title = safeFileStem(book && book.title, 36) || '书名'
   const author = safeFileStem(book && book.author, 20) || '未知'
   return `[${status}]书名：${title} 作者：${author}.txt`
@@ -318,6 +323,7 @@ function buildFileName(book) {
 module.exports = {
   buildDownloadText,
   buildFileName,
+  formatNovelText,
   identifyNovelLink,
   normalizeRequestedBook,
   parseNovel,
