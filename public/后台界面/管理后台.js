@@ -649,7 +649,7 @@
     const stageLabels = {
       downloading: `正在下载 ${operation.version}`,
       applying: operation.action === 'rollback' ? '正在应用回退版本' : '正在替换源码',
-      restarting: '正在重建容器并清理旧镜像',
+      restarting: '正在重启现有容器，按需更新镜像',
       rolling_back: `启动检查未通过，正在恢复 ${operation.fallbackVersion}`,
     }
     document.getElementById('update-progress-stage').textContent = stageLabels[operation.state]
@@ -674,7 +674,7 @@
     document.getElementById('update-progress-detail').textContent = ({
       downloading: '正在连接所选镜像并读取源码包',
       applying: '源码包已校验，正在替换运行文件',
-      restarting: '正在自动构建镜像、重建容器并等待健康检查',
+      restarting: '普通源码更新复用镜像；运行环境变化时才构建镜像',
       rolling_back: '正在恢复备份并启动旧版本',
     })[operation.state]
   }

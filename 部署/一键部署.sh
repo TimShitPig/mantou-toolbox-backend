@@ -11,6 +11,19 @@ DEPLOY_SUCCEEDED=0
 PREVIOUS_IMAGE_ID=''
 HAD_PREVIOUS_DEPLOYMENT=0
 
+runtime_fingerprint() {
+  fingerprint_dir="$1"
+  {
+    sha256sum \
+      "$fingerprint_dir/source/Dockerfile" \
+      "$fingerprint_dir/source/supervisor.js" \
+      "$fingerprint_dir/compose.yaml" | awk '{print $1}'
+    if [ -f "$fingerprint_dir/.env" ]; then
+      grep -E '^(APT_MIRROR|NODE_BASE_IMAGE)=' "$fingerprint_dir/.env" || true
+    fi
+  } | sha256sum | awk '{print $1}'
+}
+
 cleanup() {
   if [ -n "$TEMP_DIR" ] && [ "$DEPLOY_SUCCEEDED" -ne 1 ]; then
     if [ -d "$TEMP_DIR/source.previous" ]; then
@@ -198,7 +211,10 @@ systemctl daemon-reload
 systemctl enable --now mantou-toolbox-update-agent.service
 
 printf '%s\n' 'Building and starting the single backend container...'
-docker compose up -d --build --remove-orphans
+RUNTIME_FINGERPRINT="$(runtime_fingerprint "$PWD")"
+MANTOU_RUNTIME_FINGERPRINT="$RUNTIME_FINGERPRINT" docker compose build \
+  --build-arg "MANTOU_RUNTIME_FINGERPRINT=$RUNTIME_FINGERPRINT" backend
+docker compose up -d --no-build --remove-orphans
 
 NEW_CONTAINER_ID=''
 HEALTHY=0
@@ -225,6 +241,10 @@ if [ -n "$PREVIOUS_IMAGE_ID" ] && [ "$PREVIOUS_IMAGE_ID" != "$NEW_IMAGE_ID" ]; t
   docker image rm "$PREVIOUS_IMAGE_ID" >/dev/null 2>&1 || printf '%s\n' 'Previous image is still used by another container; it was retained.' >&2
 fi
 docker image prune -f --filter 'label=com.timshitpig.mantou-toolbox.managed=true' >/dev/null 2>&1 || printf '%s\n' 'Warning: Mantou Toolbox dangling-image cleanup failed.' >&2
+RUNTIME_FINGERPRINT="$(runtime_fingerprint "$PWD")"
+RUNTIME_FINGERPRINT_TEMP="$PWD/update-control/runtime-fingerprint.$$"
+printf '%s\n%s\n' "$NEW_IMAGE_ID" "$RUNTIME_FINGERPRINT" > "$RUNTIME_FINGERPRINT_TEMP"
+mv -f "$RUNTIME_FINGERPRINT_TEMP" "$PWD/update-control/runtime-fingerprint"
 DEPLOY_SUCCEEDED=1
 
 SAVED_APP_BASE_URL="$(sed -n 's/^APP_BASE_URL=//p' .env | tail -n 1)"

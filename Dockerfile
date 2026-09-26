@@ -1,7 +1,9 @@
 ARG NODE_BASE_IMAGE=node:24-bookworm-slim
 FROM ${NODE_BASE_IMAGE}
 
+ARG MANTOU_RUNTIME_FINGERPRINT=unknown
 LABEL com.timshitpig.mantou-toolbox.managed="true"
+LABEL com.timshitpig.mantou-toolbox.runtime-fingerprint="${MANTOU_RUNTIME_FINGERPRINT}"
 
 ARG APT_MIRROR=mirrors.aliyun.com
 
