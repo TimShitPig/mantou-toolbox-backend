@@ -1,6 +1,8 @@
 ARG NODE_BASE_IMAGE=node:24-bookworm-slim
 FROM ${NODE_BASE_IMAGE}
 
+LABEL com.timshitpig.mantou-toolbox.managed="true"
+
 ARG APT_MIRROR=mirrors.aliyun.com
 
 WORKDIR /app

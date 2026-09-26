@@ -224,6 +224,7 @@ NEW_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$NEW_CONTAINER_ID")"
 if [ -n "$PREVIOUS_IMAGE_ID" ] && [ "$PREVIOUS_IMAGE_ID" != "$NEW_IMAGE_ID" ]; then
   docker image rm "$PREVIOUS_IMAGE_ID" >/dev/null 2>&1 || printf '%s\n' 'Previous image is still used by another container; it was retained.' >&2
 fi
+docker image prune -f --filter 'label=com.timshitpig.mantou-toolbox.managed=true' >/dev/null 2>&1 || printf '%s\n' 'Warning: Mantou Toolbox dangling-image cleanup failed.' >&2
 DEPLOY_SUCCEEDED=1
 
 SAVED_APP_BASE_URL="$(sed -n 's/^APP_BASE_URL=//p' .env | tail -n 1)"
