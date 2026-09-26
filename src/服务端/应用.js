@@ -17,6 +17,8 @@ const { createDatabase } = require('./数据库')
 const { createSelfUpdater } = require('./自更新')
 const {
   QuarkError,
+  deleteQuarkFile,
+  deleteQuarkShare,
   decryptCookie,
   encryptCookie,
   normalizeCookie,
@@ -762,6 +764,39 @@ function createApp(options = {}) {
     sendJson(res, config, 200, { data: { connected: true } }, origin)
   }
 
+  async function handleAdminQuarkFileDelete(req, res, jobId, origin) {
+    assertMethod(req, 'DELETE')
+    requireAdminSession(req)
+    const savedFile = store.getQuarkShare(jobId)
+    if (!savedFile) throw new ApiError(404, 'quark_file_not_found')
+    if (!savedFile.fileId || !savedFile.shareId) throw new ApiError(409, 'quark_file_delete_unavailable')
+    const { cookie } = getQuarkSettings()
+    if (!cookie) throw new ApiError(503, 'quark_cookie_not_configured')
+    if (!savedFile.shareDeleted) {
+      try {
+        await deleteQuarkShare(cookie, savedFile.shareId)
+      } catch (error) {
+        const code = error instanceof QuarkError ? error.code : 'quark_share_delete_failed'
+        throw new ApiError(502, code)
+      }
+      store.markQuarkShareDeleted(jobId)
+    }
+    if (!savedFile.fileDeleted) {
+      try {
+        await deleteQuarkFile(cookie, savedFile.fileId)
+      } catch (error) {
+        const code = error instanceof QuarkError ? error.code : 'quark_file_delete_failed'
+        throw new ApiError(502, code)
+      }
+      store.markQuarkFileDeleted(jobId)
+    }
+    store.deleteQuarkShare(jobId)
+    recordSystemLog('info', 'quark', 'Deleted file and revoked share from Quark Drive', {
+      meta: { jobId, title: String(savedFile.title || '').slice(0, 128) },
+    })
+    sendJson(res, config, 200, { data: { deleted: true } }, origin)
+  }
+
   async function runDownloadJob(jobId) {
     const job = store.markJobRunning(jobId)
     if (!job) {
@@ -829,6 +864,8 @@ function createApp(options = {}) {
         ? {
             title: String(job.book.title || '未命名书籍'),
             fileName: manifest.fileName,
+            fileId: String(panLinks[0].fileId || ''),
+            shareId: String(panLinks[0].shareId || ''),
             size: manifest.size,
             shareUrl: String(panLinks[0].shareUrl || panLinks[0].copyText || ''),
           }
@@ -1170,6 +1207,8 @@ function createApp(options = {}) {
       if (pathname === '/api/admin/settings') return await handleAdminSettings(req, res, origin)
       if (pathname === '/api/admin/quark') return await handleAdminQuark(req, res, origin)
       if (pathname === '/api/admin/quark/test') return await handleAdminQuarkTest(req, res, origin)
+      const quarkFileDeleteMatch = pathname.match(/^\/api\/admin\/quark\/files\/([a-f0-9-]{36})$/i)
+      if (quarkFileDeleteMatch) return await handleAdminQuarkFileDelete(req, res, quarkFileDeleteMatch[1], origin)
       if (pathname === '/healthz') {
         assertMethod(req, 'GET')
         sendJson(res, config, 200, { data: { status: 'ok' } }, origin)

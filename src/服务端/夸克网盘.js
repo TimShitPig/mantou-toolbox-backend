@@ -404,7 +404,32 @@ async function createShare(cookie, fid, title) {
   })
   const shareUrl = String(detail.data && (detail.data.share_url || detail.data.url) || '')
   if (!/^https:\/\/(?:pan\.)?quark\.cn\//i.test(shareUrl)) throw new QuarkError('quark_share_url_missing')
-  return shareUrl
+  return { shareId, shareUrl }
+}
+
+async function deleteQuarkShare(cookieValue, shareId) {
+  const cookie = normalizeCookie(cookieValue)
+  const id = String(shareId || '').trim()
+  if (!id || id.length > 256 || /[\r\n]/.test(id)) throw new QuarkError('quark_share_id_invalid')
+  const result = await requestJson(cookie, '/1/clouddrive/share/delete', {
+    method: 'POST',
+    body: { share_ids: [id] },
+  })
+  if (result.status !== undefined && Number(result.status) !== 200) {
+    throw new QuarkError(`quark_share_delete_status_${String(result.status).slice(0, 16)}`)
+  }
+  return { deleted: true }
+}
+
+async function deleteQuarkFile(cookieValue, fileId) {
+  const cookie = normalizeCookie(cookieValue)
+  const fid = String(fileId || '').trim()
+  if (!fid || fid.length > 256 || /[\r\n]/.test(fid)) throw new QuarkError('quark_file_id_invalid')
+  await requestJson(cookie, '/1/clouddrive/file/delete', {
+    method: 'POST',
+    body: { action_type: 2, filelist: [fid], exclude_fids: [] },
+  })
+  return { deleted: true }
 }
 
 async function uploadNovelToQuark({ cookie: cookieValue, folderName, fileName, title, content }) {
@@ -413,12 +438,14 @@ async function uploadNovelToQuark({ cookie: cookieValue, folderName, fileName, t
   if (!normalizedFolderName) throw new QuarkError('quark_folder_name_invalid')
   const folderId = await getOrCreateFolder(cookie, normalizedFolderName)
   const fid = await uploadContent(cookie, folderId, fileName, content)
-  const shareUrl = await createShare(cookie, fid, title || fileName)
+  const share = await createShare(cookie, fid, title || fileName)
   return {
     type: 'quark',
     label: '夸克网盘',
-    shareUrl,
-    copyText: shareUrl,
+    fileId: fid,
+    shareId: share.shareId,
+    shareUrl: share.shareUrl,
+    copyText: share.shareUrl,
   }
 }
 
@@ -427,6 +454,8 @@ module.exports = {
   normalizeCookie,
   testQuarkConnection,
   uploadNovelToQuark,
+  deleteQuarkShare,
+  deleteQuarkFile,
   calculateFileHashes,
   encryptCookie,
   decryptCookie,
