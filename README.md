@@ -11,7 +11,7 @@
 mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 
 # 下载并运行部署准备脚本
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.21/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.22/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 
 # 查看日志
 docker compose logs -f backend
@@ -19,7 +19,9 @@ docker compose logs -f backend
 
 在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。脚本自动下载配置和源码、生成 `.env`、安装宿主机 systemd 更新代理，并构建启动服务；终端会显示管理员密码。更新代理是宿主机服务，不是第二个容器；`docker ps` 中仍只有一个后端容器。源码目录以可写挂载方式保留在 root 下，SQLite 命名卷和现有密钥会保留。Node 基础镜像通过 DaoCloud 拉取，Debian 软件包通过阿里云镜像拉取。
 
-后台地址和管理员密码由部署脚本输出。后台“更新”页点击“立即更新”或“立即回退”后，会下载并校验源码，再自动执行 Compose 构建和同容器重建；健康检查通过后自动删除上一张未使用的本地镜像。构建或启动失败时会保留旧镜像，并自动恢复旧源码。更新进度、结果和运行日志都显示在后台。默认服务端口为 `8787`。
+后台地址和管理员密码由部署脚本输出。后台“更新”页点击“立即更新”或“立即回退”后，会下载并校验源码，再自动执行 Compose 构建和同容器重建；健康检查通过后自动删除旧镜像，并清理带馒头工具箱专属标签的悬空镜像，不影响 AstrBot 等其他服务。构建或启动失败时会保留旧镜像，并自动恢复旧源码。更新进度、结果和运行日志都显示在后台。默认服务端口为 `8787`。
+
+日常更新请使用后台“立即更新”，不要直接运行 `docker compose up -d --build`；后者会替换镜像标签，但不会执行更新代理的旧镜像清理步骤。手动构建后可运行 `docker image prune -f --filter label=com.timshitpig.mantou-toolbox.managed=true`，只清理馒头工具箱标记的悬空镜像。
 
 已完成的后端 TXT 文件默认保留 24 小时后自动删除，对应的过期任务记录也会清理。可在部署目录 `.env` 中通过 `DOWNLOAD_RETENTION_HOURS` 调整保留小时数。
 
@@ -31,7 +33,7 @@ docker compose logs -f backend
 
 ```sh
 cd /root/mantou-toolbox-deploy
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.21/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.22/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 ```
 
 脚本会保留 `.env` 密钥和 SQLite 数据，并自动重建启动服务。完成后，常规更新和回退都在后台点击完成，无需再输入 Docker 命令。
@@ -42,7 +44,7 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.21
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.22
 ```
 
 工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器由后台更新代理从挂载源码重建本地运行镜像，并只清理本服务更新前未使用的旧镜像。

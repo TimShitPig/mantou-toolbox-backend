@@ -126,6 +126,9 @@ process_request() {
   if [ "$old_image" != "$new_image" ] && ! docker image rm "$old_image" >> "$BUILD_LOG" 2>&1; then
     cleanup_message='更新完成；旧镜像仍被其他容器使用，因此予以保留'
   fi
+  if ! docker image prune -f --filter 'label=com.timshitpig.mantou-toolbox.managed=true' >> "$BUILD_LOG" 2>&1; then
+    cleanup_message="$cleanup_message；馒头工具箱悬空镜像清理失败"
+  fi
   write_status "$operation_id" complete "$cleanup_message"
 }
 
