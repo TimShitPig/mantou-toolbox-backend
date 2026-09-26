@@ -290,15 +290,27 @@ async function buildDownloadText(config, book, link) {
   return providerContent || metadataExport(book)
 }
 
-function safeFileStem(value) {
-  return text(value, 72)
-    .replace(/[\\/:*?"<>|]/g, '_')
+function safeFileStem(value, maximum = 72) {
+  return text(value, maximum)
+    .replace(/\\/g, '＼')
+    .replace(/\//g, '／')
+    .replace(/:/g, '：')
+    .replace(/\*/g, '＊')
+    .replace(/\?/g, '？')
+    .replace(/"/g, '＂')
+    .replace(/</g, '＜')
+    .replace(/>/g, '＞')
+    .replace(/\|/g, '｜')
+    .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim() || 'novel'
+    .trim()
 }
 
 function buildFileName(book) {
-  return `${safeFileStem(book.title)}.txt`
+  const status = safeFileStem(book && book.status, 16) || '未知'
+  const title = safeFileStem(book && book.title, 36) || '书名'
+  const author = safeFileStem(book && book.author, 20) || '未知'
+  return `[${status}]《${title}》作者：${author}.txt`
 }
 
 module.exports = {
