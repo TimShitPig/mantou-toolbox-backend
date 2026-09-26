@@ -13,30 +13,24 @@ mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 # 下载并运行部署准备脚本
 curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 
-# 启动单容器服务
-docker compose up -d --remove-orphans
-
 # 查看日志
 docker compose logs -f backend
 ```
 
-在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。准备脚本下载 Compose 配置和运行源码到 `source/`，并自动生成 `.env`、管理员密码和密钥；终端会显示管理员密码。Compose 只启动一个后端容器，源码目录以可写挂载方式保留在 root 下，SQLite 命名卷和现有密钥会保留。Node 基础镜像通过 DaoCloud 拉取，Debian 软件包通过阿里云镜像拉取。
+在 root 终端中，部署目录为 `/root/mantou-toolbox-deploy`。脚本自动下载配置和源码、生成 `.env`、安装宿主机 systemd 更新代理，并构建启动服务；终端会显示管理员密码。更新代理是宿主机服务，不是第二个容器；`docker ps` 中仍只有一个后端容器。源码目录以可写挂载方式保留在 root 下，SQLite 命名卷和现有密钥会保留。Node 基础镜像通过 DaoCloud 拉取，Debian 软件包通过阿里云镜像拉取。
 
-后台地址和管理员密码由准备脚本输出。后台“更新”页可检查 `vX.X.X`，点击“立即更新”或“立即回退”后会由当前容器下载对应源码、校验版本并直接更新 root 下的 `source/`，随后重启后端进程并进行健康检查。检查失败时会自动恢复旧源码并再次启动旧版本。更新过程不会重建或拉取应用镜像，也不会增加容器；进度、完成和回退结果会显示在更新窗口，并记录在后台“运行日志”中。默认服务端口为 `8787`。
+后台地址和管理员密码由部署脚本输出。后台“更新”页点击“立即更新”或“立即回退”后，会下载并校验源码，再自动执行 Compose 构建和同容器重建；健康检查通过后自动删除上一张未使用的本地镜像。构建或启动失败时会保留旧镜像，并自动恢复旧源码。更新进度、结果和运行日志都显示在后台。默认服务端口为 `8787`。
 
-## 首次启用后台更新
+## 升级已有部署
 
-旧部署若没有将 `source/` 挂载到 `/app`，需在服务器终端运行一次新版部署准备脚本，然后重建当前服务以启用容器内源码更新：
+已有部署需要运行一次新版部署脚本，以安装宿主机更新代理并增加共享状态目录：
 
 ```sh
 cd /root/mantou-toolbox-deploy
 curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
-docker compose up -d --remove-orphans
 ```
 
-准备脚本会保留 `.env` 密钥和 SQLite 数据卷；之后的常规更新与回退都从后台页面点击完成。
-
-首次启用番茄正文和封面转换时，需要执行一次 `docker compose up -d --build`，把 Python 3、PyCryptodome 和 HEIC 转换工具加入运行镜像；之后的源码更新仍由后台直接更新，不需要重建镜像。
+脚本会保留 `.env` 密钥和 SQLite 数据，并自动重建启动服务。完成后，常规更新和回退都在后台点击完成，无需再输入 Docker 命令。
 
 ## 自动发布镜像
 
@@ -44,10 +38,10 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.13
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.14
 ```
 
-工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器首次部署时从源码构建基础运行容器，后台更新直接覆盖挂载源码，不会每次更新都构建新的本地镜像。
+工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器由后台更新代理从挂载源码重建本地运行镜像，并只清理本服务更新前未使用的旧镜像。
 
 ## 本地开发
 

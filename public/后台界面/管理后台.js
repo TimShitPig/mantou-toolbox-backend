@@ -477,7 +477,7 @@
     const stageLabels = {
       downloading: `正在下载 ${operation.version}`,
       applying: operation.action === 'rollback' ? '正在应用回退版本' : '正在替换源码',
-      restarting: '正在重启并检查服务',
+      restarting: '正在重建容器并清理旧镜像',
       rolling_back: `启动检查未通过，正在恢复 ${operation.fallbackVersion}`,
     }
     document.getElementById('update-progress-stage').textContent = stageLabels[operation.state]
@@ -502,7 +502,7 @@
     document.getElementById('update-progress-detail').textContent = ({
       downloading: '正在连接所选镜像并读取源码包',
       applying: '源码包已校验，正在替换运行文件',
-      restarting: '新源码已应用，正在等待健康检查',
+      restarting: '正在自动构建镜像、重建容器并等待健康检查',
       rolling_back: '正在恢复备份并启动旧版本',
     })[operation.state]
   }
@@ -575,6 +575,7 @@
     } catch (error) {
       const message = ({
         self_update_requires_supervisor: '请先运行新版部署准备脚本，再启动服务以启用后台更新。',
+        docker_update_agent_unavailable: '宿主机更新代理未就绪。请运行一次部署升级脚本完成安装，之后可在此处一键更新。',
         admin_update_version_not_available: '所选版本不再是可更新或可回退版本，请重新检查版本。',
         update_already_in_progress: '已有更新任务正在运行。',
       })[error.message] || error.message

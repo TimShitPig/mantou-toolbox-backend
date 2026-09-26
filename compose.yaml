@@ -38,12 +38,14 @@ services:
       REWARDED_AD_EVERY_DOWNLOADS: "${REWARDED_AD_EVERY_DOWNLOADS:-3}"
       CLOUD_DIRECT_LINK_ENABLED: "${CLOUD_DIRECT_LINK_ENABLED:-true}"
       REMOTE_METADATA_ENABLED: "${REMOTE_METADATA_ENABLED:-false}"
+      UPDATE_CONTROL_DIR: /app/update-control
       CONTENT_CATALOG_FILE: "${CONTENT_CATALOG_FILE:-}"
       CONTENT_PROVIDER_URL: "${CONTENT_PROVIDER_URL:-}"
       IMAGE_PROXY_ALLOWLIST: "${IMAGE_PROXY_ALLOWLIST:-qimao.com,wtzw.com,fanqienovel.com,fqnovel.com,changdunovel.com,novelfmpic.com}"
     volumes:
       - ./source:/app:rw
       - mantou-storage:/app/storage
+      - ./update-control:/app/update-control:rw
       # Put an authorized catalog at ./content/catalog.json and set
       # CONTENT_CATALOG_FILE=./content/catalog.json in .env when needed.
       - "${CONTENT_DIR:-./content}:/app/content:ro"

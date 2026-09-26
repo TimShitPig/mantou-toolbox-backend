@@ -45,6 +45,7 @@ function createConfig(env = process.env, overrides = {}) {
   const host = String(env.HOST || '127.0.0.1').trim()
   const port = integer(env.PORT, 8787, 1)
   const storageDir = path.resolve(env.STORAGE_DIR || path.join(rootDir, 'storage'))
+  const updateControlDir = path.resolve(env.UPDATE_CONTROL_DIR || path.join(rootDir, 'update-control'))
   const appBaseUrl = trimTrailingSlash(env.APP_BASE_URL || `http://${host}:${port}`)
   const imageProxyAllowedHosts = list(env.IMAGE_PROXY_ALLOWLIST, [
     'qimao.com',
@@ -64,6 +65,7 @@ function createConfig(env = process.env, overrides = {}) {
     host,
     port,
     storageDir,
+    updateControlDir,
     databasePath: path.resolve(env.DATABASE_PATH || path.join(storageDir, 'mantou.sqlite')),
     avatarDir: path.resolve(env.AVATAR_DIR || path.join(storageDir, 'avatars')),
     downloadDir: path.resolve(env.DOWNLOAD_DIR || path.join(storageDir, 'downloads')),

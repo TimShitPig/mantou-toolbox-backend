@@ -9,7 +9,7 @@ const { pipeline } = require('node:stream/promises')
 
 const execFileAsync = promisify(execFile)
 const MAX_ARCHIVE_BYTES = 150 * 1024 * 1024
-const SOURCE_ENTRIES = ['Dockerfile', 'package.json', 'server.js', 'supervisor.js', 'src', 'public']
+const SOURCE_ENTRIES = ['Dockerfile', '宿主机更新代理.sh', 'package.json', 'server.js', 'supervisor.js', 'src', 'public']
 const ACTIVE_STATES = new Set(['downloading', 'applying', 'restarting', 'rolling_back'])
 
 function updateWorkDir(storageDir, operation) {
@@ -41,7 +41,10 @@ function publicOperation(operation) {
 function createSelfUpdater(options = {}) {
   const rootDir = path.resolve(options.rootDir || '/app')
   const storageDir = path.resolve(options.storageDir || path.join(rootDir, 'storage'))
+  const updateControlDir = path.resolve(options.updateControlDir || path.join(rootDir, 'update-control'))
   const operationFile = path.join(storageDir, 'self-update-operation.json')
+  const updateRequestFile = path.join(updateControlDir, 'request')
+  const updateStatusFile = path.join(updateControlDir, 'status')
   const fetchImpl = options.fetchImpl || globalThis.fetch
   const onState = options.onState || (() => {})
   const onRestart = options.onRestart || (() => process.kill(process.pid, 'SIGTERM'))
@@ -54,6 +57,69 @@ function createSelfUpdater(options = {}) {
     } catch {
       return null
     }
+  }
+
+  async function readHostStatus() {
+    try {
+      const [operationId = '', state = '', message = '', updatedAt = ''] = (await fs.readFile(updateStatusFile, 'utf8')).split(/\r?\n/)
+      return { operationId, state, message, updatedAt: (Number(updatedAt) || 0) * 1000 }
+    } catch {
+      return null
+    }
+  }
+
+  async function assertHostUpdaterReady() {
+    const status = await readHostStatus()
+    if (status
+      && ['ready', 'complete', 'failed'].includes(status.state)
+      && status.updatedAt
+      && Date.now() - status.updatedAt < 15000) return
+    const error = new Error('docker_update_agent_unavailable')
+    error.status = 503
+    throw error
+  }
+
+  async function requestHostRebuild(operation) {
+    await assertHostUpdaterReady()
+    const temporaryFile = `${updateRequestFile}.${process.pid}.tmp`
+    await fs.writeFile(temporaryFile, `${operation.operationId}\n${operation.version}\n`, { mode: 0o600 })
+    await fs.rename(temporaryFile, updateRequestFile)
+
+    const startedAt = Date.now()
+    while (true) {
+      const status = await readHostStatus()
+      if (status && status.operationId === operation.operationId) {
+        operation.message = status.message || operation.message
+        if (status.state === 'failed') throw new Error(status.message || 'docker_update_agent_failed')
+        if (status.state === 'complete') {
+          await onRestart()
+          return
+        }
+        if (status.updatedAt && Date.now() - status.updatedAt > 120000) {
+          throw new Error('docker_update_agent_heartbeat_lost')
+        }
+      } else if (Date.now() - startedAt > 30000) {
+        throw new Error('docker_update_agent_request_timeout')
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  }
+
+  async function removePendingRequest(operation) {
+    try {
+      const request = await fs.readFile(updateRequestFile, 'utf8')
+      if (request.split(/\r?\n/, 1)[0] === operation.operationId) {
+        await fs.rm(updateRequestFile, { force: true })
+      }
+    } catch {}
+  }
+
+  async function getPublicOperation() {
+    const operation = await readOperation()
+    if (!operation || operation.state !== 'restarting') return publicOperation(operation)
+    const status = await readHostStatus()
+    if (!status || status.operationId !== operation.operationId || !status.message) return publicOperation(operation)
+    return publicOperation({ ...operation, message: status.message })
   }
 
   async function writeOperation(operation) {
@@ -166,10 +232,10 @@ function createSelfUpdater(options = {}) {
       hasBackup = true
       await transition(operation, 'applying', { message: `正在应用 ${operation.version} 源码` })
       await copySource(stagedDir, rootDir, true)
-      await transition(operation, 'restarting', { message: `正在重启并检查 ${operation.version}` })
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      await onRestart()
+      await transition(operation, 'restarting', { message: '正在请求宿主机重建容器' })
+      await requestHostRebuild(operation)
     } catch (error) {
+      await removePendingRequest(operation)
       if (hasBackup) {
         try {
           await copySource(backupDir, rootDir, true)
@@ -199,6 +265,7 @@ function createSelfUpdater(options = {}) {
     }
     busy = true
     try {
+      await assertHostUpdaterReady()
       const previous = await readOperation()
       if (previous && ACTIVE_STATES.has(previous.state)) {
         const error = new Error('update_already_in_progress')
@@ -253,7 +320,7 @@ function createSelfUpdater(options = {}) {
   }
 
   return {
-    getOperation: async () => publicOperation(await readOperation()),
+    getOperation: getPublicOperation,
     claimTerminalLog,
     start,
     readOperation,

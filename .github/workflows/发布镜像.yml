@@ -38,6 +38,7 @@ jobs:
           node --check public/后台界面/管理后台.js
           python3 -c "import ast,pathlib; ast.parse(pathlib.Path('src/小说下载/番茄正文下载器.py').read_text(encoding='utf-8'))"
           sh -n 部署/一键部署.sh
+          sh -n 宿主机更新代理.sh
           docker compose config --quiet
 
       - name: Log in to GHCR

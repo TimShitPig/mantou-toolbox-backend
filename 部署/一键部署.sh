@@ -7,8 +7,32 @@ PUBLIC_PORT="${PUBLIC_PORT:-8787}"
 NODE_BASE_IMAGE="${NODE_BASE_IMAGE:-m.daocloud.io/docker.io/library/node:24-bookworm-slim}"
 WECHAT_APP_ID="${WECHAT_APP_ID:-wx35d2ab50302daa5f}"
 TEMP_DIR=''
+DEPLOY_SUCCEEDED=0
+PREVIOUS_IMAGE_ID=''
+HAD_PREVIOUS_DEPLOYMENT=0
 
 cleanup() {
+  if [ -n "$TEMP_DIR" ] && [ "$DEPLOY_SUCCEEDED" -ne 1 ]; then
+    if [ -d "$TEMP_DIR/source.previous" ]; then
+      rm -rf "$PWD/source"
+      mv "$TEMP_DIR/source.previous" "$PWD/source"
+    fi
+    if [ -f "$TEMP_DIR/compose.previous" ]; then mv "$TEMP_DIR/compose.previous" "$PWD/compose.yaml"; fi
+    if [ -f "$TEMP_DIR/env.previous" ]; then cp "$TEMP_DIR/env.previous" "$PWD/.env"; fi
+    if [ -n "$PREVIOUS_IMAGE_ID" ]; then docker image tag "$PREVIOUS_IMAGE_ID" mantou-toolbox-backend:local >/dev/null 2>&1 || true; fi
+    if [ -f "$TEMP_DIR/unit.previous" ]; then
+      cp "$TEMP_DIR/unit.previous" /etc/systemd/system/mantou-toolbox-update-agent.service
+      systemctl daemon-reload >/dev/null 2>&1 || true
+    elif [ -f "$TEMP_DIR/mantou-toolbox-update-agent.service" ]; then
+      systemctl stop mantou-toolbox-update-agent.service >/dev/null 2>&1 || true
+      rm -f /etc/systemd/system/mantou-toolbox-update-agent.service
+      systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    if [ "$HAD_PREVIOUS_DEPLOYMENT" -eq 1 ]; then systemctl enable --now mantou-toolbox-update-agent.service >/dev/null 2>&1 || true; fi
+    if [ "$HAD_PREVIOUS_DEPLOYMENT" -eq 1 ] && [ -f "$PWD/compose.yaml" ]; then
+      docker compose up -d --no-build --remove-orphans >/dev/null 2>&1 || true
+    fi
+  fi
   if [ -n "$TEMP_DIR" ]; then rm -rf "$TEMP_DIR"; fi
 }
 
@@ -16,6 +40,11 @@ trap cleanup EXIT HUP INT TERM
 
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
   printf '%s\n' 'Docker Compose v2 is required.' >&2
+  exit 1
+fi
+
+if [ "$(id -u)" -ne 0 ] || ! command -v systemctl >/dev/null 2>&1; then
+  printf '%s\n' 'Root access and systemd are required for one-click Docker updates.' >&2
   exit 1
 fi
 
@@ -35,14 +64,20 @@ if ! grep -q '^services:' "$TEMP_DIR/compose.yaml"; then
   exit 1
 fi
 mkdir -p "$TEMP_DIR/unpacked" "$TEMP_DIR/source"
+if [ -f "$PWD/compose.yaml" ] && [ -d "$PWD/source" ]; then
+  HAD_PREVIOUS_DEPLOYMENT=1
+  PREVIOUS_IMAGE_ID="$(docker compose images -q backend 2>/dev/null | head -n 1 || true)"
+  cp "$PWD/compose.yaml" "$TEMP_DIR/compose.previous"
+  if [ -f "$PWD/.env" ]; then cp "$PWD/.env" "$TEMP_DIR/env.previous"; fi
+fi
 tar -xzf "$TEMP_DIR/source.tar.gz" --strip-components=1 -C "$TEMP_DIR/unpacked"
-for file in Dockerfile package.json server.js supervisor.js; do
+for file in Dockerfile 宿主机更新代理.sh package.json server.js supervisor.js; do
   if [ ! -f "$TEMP_DIR/unpacked/$file" ]; then
     printf 'Source archive is missing %s.\n' "$file" >&2
     exit 1
   fi
 done
-cp "$TEMP_DIR/unpacked/Dockerfile" "$TEMP_DIR/unpacked/package.json" "$TEMP_DIR/unpacked/server.js" "$TEMP_DIR/unpacked/supervisor.js" "$TEMP_DIR/source/"
+cp "$TEMP_DIR/unpacked/Dockerfile" "$TEMP_DIR/unpacked/宿主机更新代理.sh" "$TEMP_DIR/unpacked/package.json" "$TEMP_DIR/unpacked/server.js" "$TEMP_DIR/unpacked/supervisor.js" "$TEMP_DIR/source/"
 cp -R "$TEMP_DIR/unpacked/src" "$TEMP_DIR/unpacked/public" "$TEMP_DIR/source/"
 
 generate_secret() {
@@ -76,7 +111,7 @@ set_env_value() {
   fi
 }
 
-mkdir -p content
+mkdir -p content update-control
 if [ ! -f .env ]; then
   APP_BASE_URL="${APP_BASE_URL:-}"
   if [ -z "$APP_BASE_URL" ]; then
@@ -126,11 +161,68 @@ fi
 
 mv "$TEMP_DIR/compose.yaml" "$PWD/compose.yaml"
 rm -f "$PWD/update-source.sh"
-if [ -d source ]; then mv source "$TEMP_DIR/source.previous"; fi
+if [ "$HAD_PREVIOUS_DEPLOYMENT" -eq 1 ]; then
+  systemctl stop mantou-toolbox-update-agent.service >/dev/null 2>&1 || true
+  mv source "$TEMP_DIR/source.previous"
+fi
 mv "$TEMP_DIR/source" "$PWD/source"
 chown -R 1000:1000 "$PWD/source"
+chown -R 1000:1000 "$PWD/update-control"
+
+UNIT_DEPLOY_DIR="$(printf '%s' "$PWD" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g')"
+if [ -f /etc/systemd/system/mantou-toolbox-update-agent.service ]; then
+  cp /etc/systemd/system/mantou-toolbox-update-agent.service "$TEMP_DIR/unit.previous"
+fi
+cat > "$TEMP_DIR/mantou-toolbox-update-agent.service" <<EOF
+[Unit]
+Description=Mantou Toolbox Docker update agent
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory="$UNIT_DEPLOY_DIR"
+ExecStart=/bin/sh source/宿主机更新代理.sh --watch
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+install -m 0644 "$TEMP_DIR/mantou-toolbox-update-agent.service" /etc/systemd/system/mantou-toolbox-update-agent.service
+systemctl daemon-reload
+systemctl enable --now mantou-toolbox-update-agent.service
+
+printf '%s\n' 'Building and starting the single backend container...'
+docker compose up -d --build --remove-orphans
+
+NEW_CONTAINER_ID=''
+HEALTHY=0
+ATTEMPT=0
+while [ "$ATTEMPT" -lt 120 ]; do
+  NEW_CONTAINER_ID="$(docker compose ps -q backend 2>/dev/null | head -n 1 || true)"
+  if [ -n "$NEW_CONTAINER_ID" ]; then
+    CONTAINER_STATE="$(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$NEW_CONTAINER_ID" 2>/dev/null || true)"
+    case "$CONTAINER_STATE" in
+      'running healthy') HEALTHY=1; break ;;
+      *unhealthy*|exited\ *|dead\ *) printf 'Backend failed health check: %s\n' "$CONTAINER_STATE" >&2; exit 1 ;;
+    esac
+  fi
+  ATTEMPT=$((ATTEMPT + 1))
+  sleep 2
+done
+if [ "$HEALTHY" -ne 1 ]; then
+  printf '%s\n' 'Timed out waiting for backend health check.' >&2
+  exit 1
+fi
+
+NEW_IMAGE_ID="$(docker inspect --format '{{.Image}}' "$NEW_CONTAINER_ID")"
+if [ -n "$PREVIOUS_IMAGE_ID" ] && [ "$PREVIOUS_IMAGE_ID" != "$NEW_IMAGE_ID" ]; then
+  docker image rm "$PREVIOUS_IMAGE_ID" >/dev/null 2>&1 || printf '%s\n' 'Previous image is still used by another container; it was retained.' >&2
+fi
+DEPLOY_SUCCEEDED=1
 
 SAVED_APP_BASE_URL="$(sed -n 's/^APP_BASE_URL=//p' .env | tail -n 1)"
 printf 'Source code: %s/source\n' "$PWD"
 printf 'Admin UI: %s/admin\n' "${SAVED_APP_BASE_URL:-http://127.0.0.1:${PUBLIC_PORT}}"
-printf 'Next: docker compose up -d --remove-orphans\n'
+printf '%s\n' 'Deployment complete. Future source updates rebuild and clean the previous local image from the admin Update button.'

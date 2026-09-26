@@ -322,6 +322,7 @@ function createApp(options = {}) {
     ? createSelfUpdater({
       rootDir: config.rootDir,
       storageDir: config.storageDir,
+      updateControlDir: config.updateControlDir,
       fetchImpl: updateFetch,
       onState: (operation) => {
         if (operation.state === 'failed') return
