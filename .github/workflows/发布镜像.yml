@@ -35,6 +35,7 @@ jobs:
           node --check src/服务端/小说来源.js
           node --check src/服务端/番茄小说下载.js
           node --check src/服务端/自更新.js
+          node --check src/服务端/夸克网盘.js
           node --check public/后台界面/管理后台.js
           python3 -c "import ast,pathlib; ast.parse(pathlib.Path('src/小说下载/番茄正文下载器.py').read_text(encoding='utf-8'))"
           sh -n 部署/一键部署.sh

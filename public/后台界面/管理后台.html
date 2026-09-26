@@ -46,6 +46,7 @@
           <button class="nav-item" type="button" data-page="logs">日志</button>
           <button class="nav-item" type="button" data-page="data">数据</button>
           <button class="nav-item" type="button" data-page="ads">广告</button>
+          <button class="nav-item" type="button" data-page="cloud">网盘</button>
           <button class="nav-item" type="button" data-page="status">状态</button>
         </nav>
         <div class="sidebar-foot">
@@ -155,6 +156,52 @@
                 <button class="button button-primary" type="submit">保存设置</button>
               </div>
             </form>
+          </section>
+        </section>
+
+        <section id="page-cloud" class="page-view" hidden>
+          <div class="page-heading">
+            <div><p class="eyebrow">QUARK DRIVE</p><h2>夸克网盘</h2></div>
+            <span id="quark-settings-state" class="section-state">配置读取中</span>
+          </div>
+          <section class="settings-section page-section">
+            <div class="section-subheading"><h3>自动保存</h3><span>上传和分享成功后清理服务器临时文件</span></div>
+            <form id="quark-settings-form">
+              <div class="settings-grid">
+                <label class="setting-row">
+                  <span class="setting-copy"><strong>启用夸克自动保存</strong><small>新下载完成后自动上传并生成分享链接</small></span>
+                  <input name="enabled" type="checkbox"><span class="switch" aria-hidden="true"></span>
+                </label>
+                <label class="setting-row quark-folder-row">
+                  <span class="setting-copy"><strong>网盘目录</strong><small>自动创建或复用此目录</small></span>
+                  <input name="folderName" class="text-input" type="text" maxlength="64" required>
+                </label>
+              </div>
+              <label class="quark-cookie-field" for="quark-cookie">
+                <span class="setting-copy"><strong>夸克登录 Cookie</strong><small id="quark-cookie-state">尚未配置</small></span>
+                <textarea id="quark-cookie" name="cookie" rows="4" maxlength="8192" autocomplete="off" spellcheck="false" placeholder="粘贴夸克网盘登录 Cookie；留空会保留已保存的值"></textarea>
+              </label>
+              <label class="quark-clear-cookie"><input name="clearCookie" type="checkbox"><span>删除已保存的 Cookie</span></label>
+              <div class="form-footer">
+                <span id="quark-settings-message" class="form-message" role="status"></span>
+                <div class="quark-actions">
+                  <button id="quark-test-button" class="button button-secondary" type="button">测试连接</button>
+                  <button class="button button-primary" type="submit">保存设置</button>
+                </div>
+              </div>
+            </form>
+          </section>
+          <section class="activity-section page-section">
+            <div class="section-heading section-heading-compact">
+              <div><p class="eyebrow">SHARED FILES</p><h3>已保存小说</h3></div>
+              <span id="quark-file-count" class="section-state">0 条</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>书名</th><th>文件</th><th>大小</th><th>保存时间</th><th>分享链接</th></tr></thead>
+                <tbody id="quark-files-body"><tr><td class="empty-cell" colspan="5">暂无夸克网盘文件</td></tr></tbody>
+              </table>
+            </div>
           </section>
         </section>
 

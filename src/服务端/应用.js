@@ -16,6 +16,14 @@ const { createConfig } = require('./配置')
 const { createDatabase } = require('./数据库')
 const { createSelfUpdater } = require('./自更新')
 const {
+  QuarkError,
+  decryptCookie,
+  encryptCookie,
+  normalizeCookie,
+  testQuarkConnection,
+  uploadNovelToQuark,
+} = require('./夸克网盘')
+const {
   ApiError,
   corsHeaders,
   publicUrl,
@@ -680,6 +688,80 @@ function createApp(options = {}) {
     }, origin)
   }
 
+  function getQuarkSettings() {
+    const settings = store.getAdminSettings()
+    return {
+      enabled: Boolean(settings.quarkEnabled),
+      cookie: decryptCookie(settings.quarkCookieEncrypted, config.appSecret),
+      folderName: String(settings.quarkFolderName || '馒头工具箱').trim() || '馒头工具箱',
+    }
+  }
+
+  async function handleAdminQuark(req, res, origin) {
+    requireAdminSession(req)
+    if (req.method === 'GET') {
+      const settings = getQuarkSettings()
+      sendJson(res, config, 200, {
+        data: {
+          settings: {
+            enabled: settings.enabled,
+            hasCookie: Boolean(settings.cookie),
+            folderName: settings.folderName,
+          },
+          files: typeof store.getAdminCloudJobs === 'function' ? store.getAdminCloudJobs(100) : [],
+        },
+      }, origin)
+      return
+    }
+    assertMethod(req, 'PATCH')
+    const body = await readJson(req, 16 * 1024)
+    if (typeof body.enabled !== 'boolean') throw new ApiError(400, 'quark_enabled_invalid')
+    if (body.clearCookie !== undefined && typeof body.clearCookie !== 'boolean') throw new ApiError(400, 'quark_clear_cookie_invalid')
+    const folderName = String(body.folderName ?? getQuarkSettings().folderName).trim()
+    if (!folderName || folderName.length > 64 || /[\\/\u0000-\u001f]/.test(folderName)) {
+      throw new ApiError(400, 'quark_folder_name_invalid')
+    }
+    const current = getQuarkSettings()
+    let cookieEncrypted = store.getAdminSettings().quarkCookieEncrypted || ''
+    const submittedCookie = String(body.cookie || '').trim()
+    if (submittedCookie) {
+      try {
+        normalizeCookie(submittedCookie)
+      } catch {
+        throw new ApiError(400, 'quark_cookie_invalid')
+      }
+      cookieEncrypted = encryptCookie(submittedCookie, config.appSecret)
+    } else if (body.clearCookie) {
+      cookieEncrypted = ''
+    }
+    store.setAdminSettings({
+      quarkEnabled: body.enabled,
+      quarkCookieEncrypted: cookieEncrypted,
+      quarkFolderName: folderName,
+    })
+    sendJson(res, config, 200, {
+      data: {
+        enabled: body.enabled,
+        hasCookie: Boolean(submittedCookie || (!body.clearCookie && current.cookie)),
+        folderName,
+      },
+    }, origin)
+  }
+
+  async function handleAdminQuarkTest(req, res, origin) {
+    assertMethod(req, 'POST')
+    requireAdminSession(req)
+    const body = await readJson(req, 16 * 1024)
+    const cookie = String(body.cookie || '').trim() || getQuarkSettings().cookie
+    try {
+      await testQuarkConnection(cookie)
+    } catch (error) {
+      const code = error instanceof QuarkError ? error.code : 'quark_connection_failed'
+      throw new ApiError(400, code)
+    }
+    sendJson(res, config, 200, { data: { connected: true } }, origin)
+  }
+
   async function runDownloadJob(jobId) {
     const job = store.markJobRunning(jobId)
     if (!job) {
@@ -709,6 +791,28 @@ function createApp(options = {}) {
       }
       const filePath = path.join(config.downloadDir, `${job.id}.txt`)
       await fs.writeFile(filePath, output, { mode: 0o600 })
+      const panLinks = []
+      const quarkSettings = getQuarkSettings()
+      if (quarkSettings.enabled && quarkSettings.cookie) {
+        try {
+          const quarkLink = await uploadNovelToQuark({
+            cookie: quarkSettings.cookie,
+            folderName: quarkSettings.folderName,
+            fileName: result.fileName || buildFileName(job.book),
+            title: job.book.title,
+            content: output,
+          })
+          panLinks.push(quarkLink)
+          recordSystemLog('info', 'quark', 'Novel uploaded and shared on Quark Drive', {
+            meta: { jobId: job.id, title: String(job.book.title || '').slice(0, 128) },
+          })
+        } catch (error) {
+          const reason = error instanceof QuarkError ? error.code : 'quark_upload_failed'
+          recordSystemLog('warn', 'quark', 'Cloud upload failed; local file was kept', {
+            meta: { jobId: job.id, error: reason },
+          })
+        }
+      }
       const manifest = {
         fileName: result.fileName || buildFileName(job.book),
         size: output.length,
@@ -718,10 +822,38 @@ function createApp(options = {}) {
           status: job.book.status,
           chapterCount: result.chapterCount || null,
         },
-        panLinks: [],
-        directLinkEnabled: runtimeConfig.cloudDirectLinkEnabled,
+        panLinks,
+        directLinkEnabled: panLinks.length ? false : runtimeConfig.cloudDirectLinkEnabled,
       }
-      store.completeJob(job.id, manifest, filePath)
+      const quarkShare = panLinks[0]
+        ? {
+            title: String(job.book.title || '未命名书籍'),
+            fileName: manifest.fileName,
+            size: manifest.size,
+            shareUrl: String(panLinks[0].shareUrl || panLinks[0].copyText || ''),
+          }
+        : null
+      store.completeJob(job.id, manifest, filePath, quarkShare)
+      if (panLinks.length) {
+        let localFileRemoved = false
+        try {
+          await fs.unlink(filePath)
+          localFileRemoved = true
+        } catch (error) {
+          recordSystemLog('warn', 'quark', 'Cloud copy completed but local file cleanup failed', {
+            meta: { jobId: job.id, error: String(error && error.code || 'file_cleanup_failed') },
+          })
+        }
+        if (localFileRemoved && typeof store.clearJobDownloadPath === 'function') {
+          try {
+            store.clearJobDownloadPath(job.id)
+          } catch (error) {
+            recordSystemLog('warn', 'quark', 'Local file was removed but its task path could not be cleared', {
+              meta: { jobId: job.id, error: String(error && error.code || 'task_path_clear_failed') },
+            })
+          }
+        }
+      }
     } catch (error) {
       const message = error && error.message ? error.message : 'download_generation_failed'
       store.failJob(job.id, message)
@@ -924,9 +1056,11 @@ function createApp(options = {}) {
       error: job.error || '',
     }
     if (job.status === 'completed') {
-      const downloadUrl = publicUrl(config, `/api/download/file.php?id=${encodeURIComponent(job.id)}`)
-      payload.downloadUrl = downloadUrl
       payload.manifest = job.manifest
+      const hasCloudLink = Array.isArray(job.manifest && job.manifest.panLinks) && job.manifest.panLinks.length > 0
+      if (!hasCloudLink) {
+        payload.downloadUrl = publicUrl(config, `/api/download/file.php?id=${encodeURIComponent(job.id)}`)
+      }
     }
     sendJson(res, config, 200, { data: payload }, origin)
   }
@@ -1034,6 +1168,8 @@ function createApp(options = {}) {
       if (pathname === '/api/admin/update-operation') return await handleAdminUpdateOperation(req, res, origin)
       if (pathname === '/api/admin/proxies/test') return await handleAdminProxyTest(req, res, origin)
       if (pathname === '/api/admin/settings') return await handleAdminSettings(req, res, origin)
+      if (pathname === '/api/admin/quark') return await handleAdminQuark(req, res, origin)
+      if (pathname === '/api/admin/quark/test') return await handleAdminQuarkTest(req, res, origin)
       if (pathname === '/healthz') {
         assertMethod(req, 'GET')
         sendJson(res, config, 200, { data: { status: 'ok' } }, origin)

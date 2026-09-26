@@ -120,6 +120,17 @@ function createDatabase(databasePath) {
       updated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS quark_shares (
+      job_id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      size INTEGER NOT NULL DEFAULT 0,
+      share_url TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_quark_shares_created ON quark_shares(created_at DESC);
+
     CREATE TABLE IF NOT EXISTS admin_sessions (
       id TEXT PRIMARY KEY,
       expires_at INTEGER NOT NULL,
@@ -177,6 +188,9 @@ function createDatabase(databasePath) {
        SET status = 'completed', completed = total, manifest_json = ?, download_path = ?, error = '', updated_at = ?
        WHERE id = ?`
     ),
+    clearJobDownloadPath: db.prepare(
+      "UPDATE download_jobs SET download_path = '', updated_at = ? WHERE id = ? AND status = 'completed'"
+    ),
     failJob: db.prepare(
       "UPDATE download_jobs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?"
     ),
@@ -222,6 +236,13 @@ function createDatabase(databasePath) {
          (SELECT COUNT(*) FROM system_logs WHERE level = 'error' AND created_at >= ?) AS errors_24h`
     ),
     adminJobs: db.prepare('SELECT * FROM download_jobs ORDER BY created_at DESC LIMIT ?'),
+    adminCloudJobs: db.prepare('SELECT * FROM quark_shares ORDER BY created_at DESC LIMIT ?'),
+    saveQuarkShare: db.prepare(
+      `INSERT INTO quark_shares (job_id, title, file_name, size, share_url, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(job_id) DO UPDATE SET title = excluded.title, file_name = excluded.file_name,
+         size = excluded.size, share_url = excluded.share_url, created_at = excluded.created_at`
+    ),
     adminSystemLogs: db.prepare(
       `SELECT * FROM system_logs
        WHERE NOT (source = 'http' AND status_code = 404)
@@ -320,8 +341,32 @@ function createDatabase(databasePath) {
       statements.updateJobProgress.run(normalizedTotal, normalizedCompleted, Date.now(), id)
       return this.getJob(id)
     },
-    completeJob(id, manifest, downloadPath) {
-      statements.completeJob.run(JSON.stringify(manifest), downloadPath, Date.now(), id)
+    completeJob(id, manifest, downloadPath, quarkShare = null) {
+      const now = Date.now()
+      if (quarkShare) {
+        db.exec('BEGIN')
+        try {
+          statements.completeJob.run(JSON.stringify(manifest), downloadPath, now, id)
+          statements.saveQuarkShare.run(
+            id,
+            String(quarkShare.title || '未命名书籍'),
+            String(quarkShare.fileName || 'novel.txt'),
+            Math.max(0, Number(quarkShare.size) || 0),
+            String(quarkShare.shareUrl || ''),
+            now
+          )
+          db.exec('COMMIT')
+        } catch (error) {
+          db.exec('ROLLBACK')
+          throw error
+        }
+      } else {
+        statements.completeJob.run(JSON.stringify(manifest), downloadPath, now, id)
+      }
+      return this.getJob(id)
+    },
+    clearJobDownloadPath(id) {
+      statements.clearJobDownloadPath.run(Date.now(), id)
       return this.getJob(id)
     },
     failJob(id, error) {
@@ -440,6 +485,17 @@ function createDatabase(databasePath) {
         jobs,
         systemLogs,
       }
+    },
+    getAdminCloudJobs(limit = 100) {
+      return statements.adminCloudJobs.all(Math.max(1, Math.min(200, Math.trunc(Number(limit) || 100))))
+        .map((row) => ({
+          id: row.job_id,
+          title: row.title,
+          fileName: row.file_name,
+          size: Number(row.size || 0),
+          shareUrl: row.share_url,
+          updatedAt: Number(row.created_at || 0),
+        }))
     },
   }
 }

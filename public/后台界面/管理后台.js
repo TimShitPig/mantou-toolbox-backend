@@ -1,5 +1,5 @@
 (() => {
-  const pageNames = ['novel', 'logs', 'data', 'ads', 'status']
+  const pageNames = ['novel', 'logs', 'data', 'ads', 'cloud', 'status']
   const loginView = document.getElementById('login-view')
   const dashboardView = document.getElementById('dashboard-view')
   const loginForm = document.getElementById('login-form')
@@ -8,6 +8,7 @@
   const updateDialog = document.getElementById('update-dialog')
   const logLevelFilters = [...document.querySelectorAll('.log-level-filter input')]
   const logAutoScroll = document.getElementById('log-auto-scroll')
+  const quarkForm = document.getElementById('quark-settings-form')
   const proxyHosts = {
     github: null,
     edgeone: 'https://edgeone.gh-proxy.com',
@@ -98,6 +99,7 @@
       history.replaceState(null, '', `#${activePage}`)
     }
     updateLogPolling()
+    if (!dashboardView.hidden && activePage === 'cloud') refreshQuarkPage()
   }
 
   async function api(path, options = {}) {
@@ -262,6 +264,136 @@
     }
   }
 
+  function formatBytes(value) {
+    const bytes = Number(value) || 0
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  function renderQuarkFiles(items) {
+    const body = document.getElementById('quark-files-body')
+    body.replaceChildren()
+    const files = Array.isArray(items) ? items : []
+    setText('quark-file-count', `${files.length} 条`)
+    if (!files.length) {
+      const row = document.createElement('tr')
+      appendCell(row, '暂无夸克网盘文件', 'empty-cell').colSpan = 5
+      body.appendChild(row)
+      return
+    }
+    for (const file of files) {
+      const row = document.createElement('tr')
+      appendCell(row, file.title || '未命名书籍', 'cell-title')
+      appendCell(row, file.fileName || 'novel.txt', 'cell-muted')
+      appendCell(row, formatBytes(file.size), 'cell-muted')
+      appendCell(row, formatDate(file.updatedAt), 'cell-muted')
+      const linkCell = appendCell(row, '')
+      let shareUrl = ''
+      try {
+        const parsed = new URL(String(file.shareUrl || ''))
+        if (parsed.protocol === 'https:' && (parsed.hostname === 'pan.quark.cn' || parsed.hostname === 'quark.cn')) {
+          shareUrl = parsed.href
+        }
+      } catch {}
+      if (shareUrl) {
+        const link = document.createElement('a')
+        link.className = 'quark-share-link'
+        link.href = shareUrl
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        link.textContent = shareUrl
+        linkCell.append(link)
+        const copy = document.createElement('button')
+        copy.className = 'button button-quiet quark-copy-button'
+        copy.type = 'button'
+        copy.textContent = '复制'
+        copy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(shareUrl)
+            setMessage(document.getElementById('quark-settings-message'), '分享链接已复制。', 'success')
+          } catch {
+            setMessage(document.getElementById('quark-settings-message'), '复制失败，请打开分享链接后复制。', 'error')
+          }
+        })
+        linkCell.append(copy)
+      } else {
+        linkCell.textContent = '链接格式无效'
+      }
+      body.appendChild(row)
+    }
+  }
+
+  async function refreshQuarkPage() {
+    const state = document.getElementById('quark-settings-state')
+    state.textContent = '同步中'
+    try {
+      const data = await api('/api/admin/quark')
+      const settings = data.settings || {}
+      quarkForm.elements.enabled.checked = Boolean(settings.enabled)
+      quarkForm.elements.folderName.value = String(settings.folderName || '馒头工具箱')
+      quarkForm.elements.clearCookie.checked = false
+      document.getElementById('quark-cookie-state').textContent = settings.hasCookie ? '已加密保存，测试或更换时输入新值' : '尚未配置'
+      state.textContent = settings.enabled
+        ? (settings.hasCookie ? '自动保存已启用' : '已启用，需配置 Cookie')
+        : '自动保存未启用'
+      renderQuarkFiles(data.files || [])
+    } catch (error) {
+      state.textContent = '读取失败'
+      setMessage(document.getElementById('quark-settings-message'), error.message, 'error')
+    }
+  }
+
+  async function saveQuarkSettings(event) {
+    event.preventDefault()
+    const button = quarkForm.querySelector('button[type="submit"]')
+    button.disabled = true
+    document.getElementById('quark-settings-state').textContent = '保存中'
+    try {
+      await api('/api/admin/quark', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          enabled: quarkForm.elements.enabled.checked,
+          folderName: quarkForm.elements.folderName.value,
+          cookie: quarkForm.elements.cookie.value,
+          clearCookie: quarkForm.elements.clearCookie.checked,
+        }),
+      })
+      quarkForm.elements.cookie.value = ''
+      quarkForm.elements.clearCookie.checked = false
+      setMessage(document.getElementById('quark-settings-message'), '设置已保存。', 'success')
+      await refreshQuarkPage()
+    } catch (error) {
+      document.getElementById('quark-settings-state').textContent = '保存失败'
+      setMessage(document.getElementById('quark-settings-message'), error.message, 'error')
+    } finally {
+      button.disabled = false
+    }
+  }
+
+  async function testQuarkConnection() {
+    const button = document.getElementById('quark-test-button')
+    button.disabled = true
+    setMessage(document.getElementById('quark-settings-message'), '正在测试夸克网盘连接…', '')
+    try {
+      await api('/api/admin/quark/test', {
+        method: 'POST',
+        body: JSON.stringify({ cookie: quarkForm.elements.cookie.value }),
+      })
+      setMessage(document.getElementById('quark-settings-message'), '连接成功。', 'success')
+    } catch (error) {
+      const messages = {
+        quark_cookie_invalid: 'Cookie 无效或已失效，请重新复制夸克网盘 Cookie。',
+        quark_request_failed: '连接夸克网盘失败，请检查服务器网络。',
+        quark_http_401: '登录状态无效，请重新复制夸克网盘 Cookie。',
+        quark_api_401: '登录状态无效，请重新复制夸克网盘 Cookie。',
+      }
+      setMessage(document.getElementById('quark-settings-message'), messages[error.message] || `连接失败：${error.message}`, 'error')
+    } finally {
+      button.disabled = false
+    }
+  }
+
   function renderMetrics(metrics) {
     setText('users-count', metrics.users)
     setText('jobs-today', metrics.jobs_today)
@@ -285,6 +417,7 @@
         setMessage(group.message, '', '')
       }
       setText('updated-at', `更新于 ${formatDate(latestData.generatedAt)}`)
+      if (activePage === 'cloud') await refreshQuarkPage()
     } catch (error) {
       if (error.message === 'admin_login_required') return showLogin()
       for (const group of Object.values(settingForms)) {
@@ -673,6 +806,9 @@
       saveSettings(name)
     })
   }
+
+  quarkForm.addEventListener('submit', saveQuarkSettings)
+  document.getElementById('quark-test-button').addEventListener('click', testQuarkConnection)
 
   for (const item of navItems) {
     item.addEventListener('click', () => setPage(item.dataset.page))

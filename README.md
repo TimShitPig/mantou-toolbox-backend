@@ -11,7 +11,7 @@
 mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 
 # 下载并运行部署准备脚本
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.18/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.20/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 
 # 查看日志
 docker compose logs -f backend
@@ -23,13 +23,15 @@ docker compose logs -f backend
 
 已完成的后端 TXT 文件默认保留 24 小时后自动删除，对应的过期任务记录也会清理。可在部署目录 `.env` 中通过 `DOWNLOAD_RETENTION_HOURS` 调整保留小时数。
 
+后台“网盘”页可配置夸克网盘 Cookie、设置保存目录并测试连接。启用后，新下载会自动上传并创建分享链接；两步都成功后，服务器会删除本地 TXT，小程序直接显示夸克链接。夸克上传或分享失败时会保留 TXT，并沿用原下载流程。
+
 ## 升级已有部署
 
 已有部署需要运行一次新版部署脚本，以安装宿主机更新代理并增加共享状态目录：
 
 ```sh
 cd /root/mantou-toolbox-deploy
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.18/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.20/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 ```
 
 脚本会保留 `.env` 密钥和 SQLite 数据，并自动重建启动服务。完成后，常规更新和回退都在后台点击完成，无需再输入 Docker 命令。
@@ -40,7 +42,7 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.19
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.20
 ```
 
 工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器由后台更新代理从挂载源码重建本地运行镜像，并只清理本服务更新前未使用的旧镜像。
