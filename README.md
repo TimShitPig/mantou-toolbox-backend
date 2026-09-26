@@ -11,7 +11,7 @@
 mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 
 # 下载并运行部署准备脚本
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.18/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 
 # 查看日志
 docker compose logs -f backend
@@ -27,7 +27,7 @@ docker compose logs -f backend
 
 ```sh
 cd /root/mantou-toolbox-deploy
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/main/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.18/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 ```
 
 脚本会保留 `.env` 密钥和 SQLite 数据，并自动重建启动服务。完成后，常规更新和回退都在后台点击完成，无需再输入 Docker 命令。
