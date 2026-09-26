@@ -30,6 +30,7 @@
   let activePage = 'novel'
   let logPollTimer = null
   let logRefreshPending = false
+  let logRenderDeferred = false
   let systemLogItems = []
 
   const settingForms = {
@@ -185,6 +186,13 @@
     const body = document.getElementById('logs-body')
     const scrollTop = body.scrollTop
     systemLogItems = items
+    const selection = window.getSelection()
+    if (selection && !selection.isCollapsed
+      && (body.contains(selection.anchorNode) || body.contains(selection.focusNode))) {
+      logRenderDeferred = true
+      return
+    }
+    logRenderDeferred = false
     const selectedLevels = new Set(logLevelFilters.filter((filter) => filter.checked).map((filter) => filter.value))
     const visibleItems = items
       .filter((item) => selectedLevels.has(String(item.level || 'info').toLowerCase()))
@@ -672,6 +680,11 @@
   for (const filter of logLevelFilters) {
     filter.addEventListener('change', () => renderSystemLogs(systemLogItems))
   }
+  document.addEventListener('selectionchange', () => {
+    const selection = window.getSelection()
+    if (!logRenderDeferred || (selection && !selection.isCollapsed)) return
+    if (!dashboardView.hidden && activePage === 'logs') renderSystemLogs(systemLogItems)
+  })
   window.addEventListener('hashchange', () => setPage(location.hash.slice(1), false))
   for (const radio of proxyRadios) {
     radio.addEventListener('change', () => {
