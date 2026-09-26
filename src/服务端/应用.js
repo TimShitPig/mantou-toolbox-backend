@@ -826,6 +826,7 @@ function createApp(options = {}) {
       }
       const filePath = path.join(config.downloadDir, `${job.id}.txt`)
       await fs.writeFile(filePath, output, { mode: 0o600 })
+      const fileName = buildFileName(job.book)
       const panLinks = []
       const quarkSettings = getQuarkSettings()
       if (quarkSettings.enabled && quarkSettings.cookie) {
@@ -833,7 +834,7 @@ function createApp(options = {}) {
           const quarkLink = await uploadNovelToQuark({
             cookie: quarkSettings.cookie,
             folderName: quarkSettings.folderName,
-            fileName: result.fileName || buildFileName(job.book),
+            fileName,
             title: job.book.title,
             content: output,
           })
@@ -849,7 +850,7 @@ function createApp(options = {}) {
         }
       }
       const manifest = {
-        fileName: result.fileName || buildFileName(job.book),
+        fileName,
         size: output.length,
         meta: {
           title: job.book.title,
