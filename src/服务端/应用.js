@@ -290,6 +290,8 @@ function createApp(options = {}) {
   const proxyFetch = options.proxyFetchImpl || options.fetchImpl || globalThis.fetch
   let server = null
   let closed = false
+  let downloadCleanupTimer = null
+  let downloadCleanupRunning = false
   const updateCache = new Map()
 
   function recordSystemLog(level, source, message, context = {}) {
@@ -316,6 +318,54 @@ function createApp(options = {}) {
     if (level === 'error') console.error(output)
     else if (level === 'warn') console.warn(output)
     else console.info(output)
+  }
+
+  async function cleanupExpiredDownloads() {
+    if (downloadCleanupRunning
+      || typeof store.getExpiredDownloadJobs !== 'function'
+      || typeof store.deleteExpiredDownloadJob !== 'function') return
+    downloadCleanupRunning = true
+    let removedFiles = 0
+    let removedJobs = 0
+    const retentionHours = Number(config.downloadRetentionHours) || 24
+    const cutoff = Date.now() - retentionHours * 60 * 60 * 1000
+    const downloadRoot = path.resolve(config.downloadDir)
+
+    try {
+      for (const job of store.getExpiredDownloadJobs(cutoff)) {
+        if (job.downloadPath) {
+          const filePath = path.resolve(downloadRoot, job.downloadPath)
+          const relativePath = path.relative(downloadRoot, filePath)
+          if (!relativePath || relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+            continue
+          }
+          try {
+            const details = await fs.lstat(filePath)
+            if (details.isSymbolicLink() || !details.isFile()) continue
+            await fs.unlink(filePath)
+            removedFiles += 1
+          } catch (error) {
+            if (error && error.code !== 'ENOENT') throw error
+          }
+        }
+        removedJobs += store.deleteExpiredDownloadJob(job.id, cutoff)
+      }
+      if (removedFiles || removedJobs) {
+        recordSystemLog('info', 'downloads', 'Expired download files and jobs removed', {
+          method: 'SYSTEM',
+          path: '/app/storage/downloads',
+          meta: { removedFiles, removedJobs, retentionHours },
+        })
+      }
+    } catch (error) {
+      recordSystemLog('warn', 'downloads', 'Expired download cleanup failed', {
+        method: 'SYSTEM',
+        path: '/app/storage/downloads',
+        meta: { error: String(error && error.message || error).slice(0, 512) },
+      })
+    } finally {
+      downloadCleanupRunning = false
+    }
   }
 
   const selfUpdater = options.updater || (config.selfUpdateEnabled
@@ -1025,6 +1075,11 @@ function createApp(options = {}) {
     }
     await fs.mkdir(config.avatarDir, { recursive: true })
     await fs.mkdir(config.downloadDir, { recursive: true })
+    await cleanupExpiredDownloads()
+    downloadCleanupTimer = setInterval(() => {
+      cleanupExpiredDownloads().catch(() => {})
+    }, 60 * 60 * 1000)
+    if (typeof downloadCleanupTimer.unref === 'function') downloadCleanupTimer.unref()
     server = http.createServer(handler)
     await new Promise((resolve, reject) => {
       server.once('error', reject)
@@ -1050,6 +1105,10 @@ function createApp(options = {}) {
       return
     }
     closed = true
+    if (downloadCleanupTimer) {
+      clearInterval(downloadCleanupTimer)
+      downloadCleanupTimer = null
+    }
     if (server) {
       recordSystemLog('info', 'server', 'Backend stopping', { method: 'SYSTEM' })
       await new Promise((resolve) => server.close(resolve))

@@ -69,6 +69,7 @@ function createConfig(env = process.env, overrides = {}) {
     databasePath: path.resolve(env.DATABASE_PATH || path.join(storageDir, 'mantou.sqlite')),
     avatarDir: path.resolve(env.AVATAR_DIR || path.join(storageDir, 'avatars')),
     downloadDir: path.resolve(env.DOWNLOAD_DIR || path.join(storageDir, 'downloads')),
+    downloadRetentionHours: integer(env.DOWNLOAD_RETENTION_HOURS, 24, 1),
     appBaseUrl,
     appBuildVersion: sourceVersion ? `v${sourceVersion}` : String(env.APP_BUILD_VERSION || '').trim(),
     selfUpdateEnabled: bool(env.MANTOU_SUPERVISED, false),

@@ -180,6 +180,12 @@ function createDatabase(databasePath) {
     failJob: db.prepare(
       "UPDATE download_jobs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?"
     ),
+    expiredDownloadJobs: db.prepare(
+      "SELECT id, download_path FROM download_jobs WHERE status IN ('completed', 'failed') AND updated_at < ?"
+    ),
+    deleteExpiredDownloadJob: db.prepare(
+      "DELETE FROM download_jobs WHERE id = ? AND status IN ('completed', 'failed') AND updated_at < ?"
+    ),
     countCompletedJobsSince: db.prepare(
       "SELECT COUNT(*) AS count FROM download_jobs WHERE owner_user_id = ? AND status = 'completed' AND created_at >= ?"
     ),
@@ -321,6 +327,15 @@ function createDatabase(databasePath) {
     failJob(id, error) {
       statements.failJob.run(String(error || 'download_generation_failed').slice(0, 1000), Date.now(), id)
       return this.getJob(id)
+    },
+    getExpiredDownloadJobs(before) {
+      return statements.expiredDownloadJobs.all(before).map((row) => ({
+        id: row.id,
+        downloadPath: row.download_path || '',
+      }))
+    },
+    deleteExpiredDownloadJob(id, before) {
+      return Number(statements.deleteExpiredDownloadJob.run(id, before).changes || 0)
     },
     countCompletedJobsSince(userId, startAt) {
       if (!userId) {
