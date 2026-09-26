@@ -182,7 +182,7 @@ Requires=docker.service
 
 [Service]
 Type=simple
-WorkingDirectory="$UNIT_DEPLOY_DIR"
+WorkingDirectory=$UNIT_DEPLOY_DIR
 ExecStart=/bin/sh "$UNIT_DEPLOY_DIR/source/宿主机更新代理.sh" --watch "$UNIT_DEPLOY_DIR"
 Restart=always
 RestartSec=2
