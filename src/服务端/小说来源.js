@@ -29,6 +29,13 @@ function formatWordCount(value) {
   return `${parsed}字`
 }
 
+function formatChapterCount(value) {
+  const normalized = text(value, 64)
+  if (!normalized) return '待获取'
+  if (/章$/.test(normalized)) return normalized
+  return /^\d+(?:\.\d+)?$/.test(normalized) ? `${normalized}章` : normalized
+}
+
 function identifyNovelLink(link) {
   const input = text(link, 4096)
   if (!input) {
@@ -121,7 +128,7 @@ function normalizeBook(candidate, identity) {
     author: text(pickFirst(source, ['author', 'authorName', 'author_name']), 256) || '待获取',
     status: normalizeStatus(pickFirst(source, ['status', 'bookStatus', 'book_status'])),
     wordCount: formatWordCount(pickFirst(source, ['wordCount', 'word_count', 'word_number', 'words', 'wordNum'])),
-    chapterCount: text(pickFirst(source, ['chapterCount', 'chapter_count', 'chapter_number', 'serial_count', 'chapters']), 64) || '待获取',
+    chapterCount: formatChapterCount(pickFirst(source, ['chapterCount', 'chapter_count', 'chapter_number', 'serial_count', 'chapters'])),
     intro: text(pickFirst(source, ['intro', 'introduction', 'description', 'abstract']), 8000)
       || fallbackBook(identity).intro,
     source: identity.source,
