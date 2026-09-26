@@ -192,6 +192,8 @@ td.cell-error { color: var(--red); }
 td.empty-cell { height: 58px; color: #8a979b; text-align: center; vertical-align: middle; }
 .quark-share-link { display: inline-block; max-width: 360px; color: var(--green-dark); overflow-wrap: anywhere; }
 .quark-copy-button { min-height: 25px; margin-left: 5px; padding: 0 6px; font-size: 10px; }
+.quark-delete-button { min-height: 25px; color: var(--red); font-size: 10px; }
+.quark-delete-button:disabled { cursor: not-allowed; opacity: .45; }
 .status-pill { display: inline-block; padding: 3px 6px; border-radius: 3px; background: #edf2f0; color: #52635e; font-size: 10px; white-space: nowrap; }
 .status-pill.completed { background: var(--green-soft); color: var(--green-dark); }
 .status-pill.failed { background: #fbebea; color: var(--red); }

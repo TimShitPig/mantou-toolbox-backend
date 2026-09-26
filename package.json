@@ -1,6 +1,6 @@
 {
   "name": "mantou-toolbox-backend",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "private": true,
   "description": "Node backend with a Python Fanqie novel text downloader.",
   "main": "server.js",

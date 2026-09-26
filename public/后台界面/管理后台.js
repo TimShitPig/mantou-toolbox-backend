@@ -278,7 +278,7 @@
     setText('quark-file-count', `${files.length} 条`)
     if (!files.length) {
       const row = document.createElement('tr')
-      appendCell(row, '暂无夸克网盘文件', 'empty-cell').colSpan = 5
+      appendCell(row, '暂无夸克网盘文件', 'empty-cell').colSpan = 6
       body.appendChild(row)
       return
     }
@@ -296,7 +296,9 @@
           shareUrl = parsed.href
         }
       } catch {}
-      if (shareUrl) {
+      if (file.shareDeleted) {
+        linkCell.textContent = file.fileDeleted ? '分享和文件已删除' : '分享已撤销，文件删除待完成'
+      } else if (shareUrl) {
         const link = document.createElement('a')
         link.className = 'quark-share-link'
         link.href = shareUrl
@@ -320,7 +322,36 @@
       } else {
         linkCell.textContent = '链接格式无效'
       }
+      const actionCell = appendCell(row, '')
+      const remove = document.createElement('button')
+      remove.className = 'button button-quiet quark-delete-button'
+      remove.type = 'button'
+      remove.textContent = file.shareDeleted ? '继续删除' : '删除'
+      remove.disabled = !file.canDelete
+      remove.title = file.canDelete ? '删除夸克网盘文件并撤销分享链接' : '旧记录缺少文件标识，无法删除网盘文件'
+      remove.addEventListener('click', () => deleteQuarkFile(file, remove))
+      actionCell.append(remove)
       body.appendChild(row)
+    }
+  }
+
+  async function deleteQuarkFile(file, button) {
+    const title = String(file.title || file.fileName || '此文件')
+    if (!window.confirm(`确定删除夸克网盘中的“${title}”并撤销分享链接吗？`)) return
+    button.disabled = true
+    try {
+      await api(`/api/admin/quark/files/${encodeURIComponent(file.id)}`, { method: 'DELETE' })
+      setMessage(document.getElementById('quark-settings-message'), '已从夸克网盘删除。', 'success')
+      await refreshQuarkPage()
+    } catch (error) {
+      const messages = {
+        quark_cookie_not_configured: '请先配置夸克 Cookie。',
+        quark_file_delete_unavailable: '这条旧记录缺少夸克文件或分享标识，不能删除。',
+        quark_file_not_found: '网盘记录已不存在，请刷新列表。',
+      }
+      await refreshQuarkPage()
+      setMessage(document.getElementById('quark-settings-message'), messages[error.message] || `删除失败：${error.message}`, 'error')
+      button.disabled = false
     }
   }
 

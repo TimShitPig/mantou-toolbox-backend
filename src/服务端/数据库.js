@@ -124,6 +124,10 @@ function createDatabase(databasePath) {
       job_id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       file_name TEXT NOT NULL,
+      file_fid TEXT NOT NULL DEFAULT '',
+      share_id TEXT NOT NULL DEFAULT '',
+      share_deleted INTEGER NOT NULL DEFAULT 0,
+      file_deleted INTEGER NOT NULL DEFAULT 0,
       size INTEGER NOT NULL DEFAULT 0,
       share_url TEXT NOT NULL,
       created_at INTEGER NOT NULL
@@ -144,6 +148,16 @@ function createDatabase(databasePath) {
     CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_system_logs_level_created ON system_logs(level, created_at DESC);
   `)
+
+  const quarkShareColumns = new Set(db.prepare('PRAGMA table_info(quark_shares)').all().map((column) => column.name))
+  for (const [column, definition] of [
+    ['file_fid', "TEXT NOT NULL DEFAULT ''"],
+    ['share_id', "TEXT NOT NULL DEFAULT ''"],
+    ['share_deleted', 'INTEGER NOT NULL DEFAULT 0'],
+    ['file_deleted', 'INTEGER NOT NULL DEFAULT 0'],
+  ]) {
+    if (!quarkShareColumns.has(column)) db.exec(`ALTER TABLE quark_shares ADD COLUMN ${column} ${definition}`)
+  }
 
   const statements = {
     findUser: db.prepare('SELECT * FROM users WHERE provider = ? AND provider_subject = ?'),
@@ -237,11 +251,20 @@ function createDatabase(databasePath) {
     ),
     adminJobs: db.prepare('SELECT * FROM download_jobs ORDER BY created_at DESC LIMIT ?'),
     adminCloudJobs: db.prepare('SELECT * FROM quark_shares ORDER BY created_at DESC LIMIT ?'),
+    findQuarkShare: db.prepare('SELECT * FROM quark_shares WHERE job_id = ?'),
+    deleteQuarkShare: db.prepare('DELETE FROM quark_shares WHERE job_id = ?'),
+    markQuarkShareDeleted: db.prepare(
+      'UPDATE quark_shares SET share_deleted = 1, share_url = \'\' WHERE job_id = ?'
+    ),
+    markQuarkFileDeleted: db.prepare(
+      'UPDATE quark_shares SET file_deleted = 1 WHERE job_id = ?'
+    ),
     saveQuarkShare: db.prepare(
-      `INSERT INTO quark_shares (job_id, title, file_name, size, share_url, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO quark_shares (job_id, title, file_name, file_fid, share_id, size, share_url, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(job_id) DO UPDATE SET title = excluded.title, file_name = excluded.file_name,
-         size = excluded.size, share_url = excluded.share_url, created_at = excluded.created_at`
+         file_fid = excluded.file_fid, share_id = excluded.share_id, share_deleted = 0,
+         file_deleted = 0, size = excluded.size, share_url = excluded.share_url, created_at = excluded.created_at`
     ),
     adminSystemLogs: db.prepare(
       `SELECT * FROM system_logs
@@ -351,6 +374,8 @@ function createDatabase(databasePath) {
             id,
             String(quarkShare.title || '未命名书籍'),
             String(quarkShare.fileName || 'novel.txt'),
+            String(quarkShare.fileId || ''),
+            String(quarkShare.shareId || ''),
             Math.max(0, Number(quarkShare.size) || 0),
             String(quarkShare.shareUrl || ''),
             now
@@ -495,7 +520,34 @@ function createDatabase(databasePath) {
           size: Number(row.size || 0),
           shareUrl: row.share_url,
           updatedAt: Number(row.created_at || 0),
+          canDelete: Boolean(row.file_fid && row.share_id),
+          shareDeleted: Boolean(row.share_deleted),
+          fileDeleted: Boolean(row.file_deleted),
         }))
+    },
+    getQuarkShare(id) {
+      const row = statements.findQuarkShare.get(id)
+      if (!row) return null
+      return {
+        id: row.job_id,
+        title: row.title,
+        fileName: row.file_name,
+        fileId: row.file_fid || '',
+        shareId: row.share_id || '',
+        shareDeleted: Boolean(row.share_deleted),
+        fileDeleted: Boolean(row.file_deleted),
+        size: Number(row.size || 0),
+        shareUrl: row.share_url,
+      }
+    },
+    markQuarkShareDeleted(id) {
+      return Number(statements.markQuarkShareDeleted.run(id).changes || 0)
+    },
+    markQuarkFileDeleted(id) {
+      return Number(statements.markQuarkFileDeleted.run(id).changes || 0)
+    },
+    deleteQuarkShare(id) {
+      return Number(statements.deleteQuarkShare.run(id).changes || 0)
     },
   }
 }
