@@ -11,7 +11,7 @@
 mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 
 # 下载并运行部署准备脚本
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.25/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.26/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 
 # 查看日志
 docker compose logs -f backend
@@ -27,13 +27,15 @@ docker compose logs -f backend
 
 后台“网盘”页可配置夸克网盘 Cookie、设置保存目录并测试连接。启用后，新下载会自动上传并创建分享链接；两步都成功后，服务器会删除本地 TXT，小程序直接显示夸克链接。文件名统一为“[状态]书名：书名 作者：作者名.txt”，例如“[连载]书名：我，旧日至高位格，出手无视规则 作者：夜光浮摇.txt”；连载和完结分别使用“连载”“完结”。网盘页可复制分享链接，也可删除夸克文件并撤销分享。夸克上传或分享失败时会保留 TXT，并沿用原下载流程。
 
+TXT 内部依次包含声明、名称、作者、状态、字数、书籍 ID、章节数、简介和正文，采用 UTF-8 无 BOM、CRLF 换行。番茄下载使用本次 App 详情和实际下载章节数生成资料头，章节之间只留一个空行；下载接口与夸克网盘保存相同的排版内容。
+
 ## 升级已有部署
 
 已有部署需要运行一次新版部署脚本，以安装宿主机更新代理并增加共享状态目录：
 
 ```sh
 cd /root/mantou-toolbox-deploy
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.25/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.26/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 ```
 
 脚本会保留 `.env` 密钥和 SQLite 数据，并自动重建启动服务。完成后，常规更新和回退都在后台点击完成，无需再输入 Docker 命令。
@@ -44,7 +46,7 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.25
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.26
 ```
 
 工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器的普通源码更新使用 `/app` 挂载源码并重启现有容器，镜像运行环境指纹变化时才从公开源码构建本地镜像。

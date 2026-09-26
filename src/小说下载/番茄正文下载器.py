@@ -6955,6 +6955,7 @@ def download(book_id:str, output:Path, limit:int=0, batch_size:int=1500, sleep:f
         batch_size=min(requested_batch_size,max_request_items)
     root=output/sanitize(name); cdir=root/'chapters'; hdir=root/'html'; rawdir=root/'raw'
     root.mkdir(parents=True,exist_ok=True)
+    (root/'book.json').write_text(json.dumps(detail,ensure_ascii=False),'utf-8')
     if not request_only and not single_file:
         cdir.mkdir(parents=True,exist_ok=True)
     if save_html and not request_only: hdir.mkdir(parents=True,exist_ok=True)
@@ -7010,7 +7011,7 @@ def download(book_id:str, output:Path, limit:int=0, batch_size:int=1500, sleep:f
     if single_file and not request_only and not save_html and request_workers>1:
         merged,records=download_single_file_fast(book_id,item_ids,batch_size,sign_mode,quiet,request_workers,decrypt_workers)
         merged_path=root/(sanitize(name)+'.txt')
-        merged_path.write_text(('\n'+'='*32+'\n\n').join(merged).strip()+'\n','utf-8')
+        merged_path.write_text('\n\n'.join(section.strip() for section in merged if section.strip())+'\n','utf-8')
         (root/'chapters.json').write_text(json.dumps(records,ensure_ascii=False,indent=2),'utf-8')
         print(f'完成: {len(records)} 章')
         print(f'合并 TXT: {merged_path}')
@@ -7139,7 +7140,7 @@ def download(book_id:str, output:Path, limit:int=0, batch_size:int=1500, sleep:f
         request_session.close()
     merged_path=root/(sanitize(name)+'.txt')
     if not request_only:
-        merged_path.write_text(('\n'+'='*32+'\n\n').join(merged).strip()+'\n','utf-8')
+        merged_path.write_text('\n\n'.join(section.strip() for section in merged if section.strip())+'\n','utf-8')
     (root/'chapters.json').write_text(json.dumps(records,ensure_ascii=False,indent=2),'utf-8')
     if request_only:
         total_infos=sum(int(r.get('item_infos') or 0) for r in records)

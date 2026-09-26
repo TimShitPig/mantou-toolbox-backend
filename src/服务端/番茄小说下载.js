@@ -165,11 +165,22 @@ async function downloadFanqieNovel({ bookId, outputDir, onProgress }) {
       throw new Error(`fanqie_download_incomplete:${successful}/${records.length}`)
     }
 
+    let book
+    try {
+      book = JSON.parse(await fs.readFile(path.join(path.dirname(resolvedPath), 'book.json'), 'utf8'))
+      if (!book || typeof book !== 'object' || Array.isArray(book)) {
+        throw new Error('invalid_book_info')
+      }
+    } catch {
+      throw new Error('fanqie_download_book_info_invalid')
+    }
+
     reportProgress(records.length, records.length)
     return {
       text,
       fileName: path.basename(resolvedPath),
       chapterCount: records.length,
+      book,
     }
   } finally {
     await fs.rm(temporaryDir, { recursive: true, force: true })
