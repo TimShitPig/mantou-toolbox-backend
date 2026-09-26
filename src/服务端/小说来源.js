@@ -307,10 +307,12 @@ function safeFileStem(value, maximum = 72) {
 }
 
 function buildFileName(book) {
-  const status = safeFileStem(book && book.status, 16) || '未知'
+  let status = safeFileStem(book && book.status, 16) || '未知'
+  if (status === '连载中') status = '连载'
+  if (['已完结', '已完本', '完本'].includes(status)) status = '完结'
   const title = safeFileStem(book && book.title, 36) || '书名'
   const author = safeFileStem(book && book.author, 20) || '未知'
-  return `[${status}]《${title}》作者：${author}.txt`
+  return `[${status}]书名：${title} 作者：${author}.txt`
 }
 
 module.exports = {
