@@ -191,6 +191,8 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 systemd-analyze verify "$TEMP_DIR/mantou-toolbox-update-agent.service"
+systemctl stop mantou-toolbox-update-agent.service >/dev/null 2>&1 || true
+systemctl disable mantou-toolbox-update-agent.service >/dev/null 2>&1 || true
 install -m 0644 "$TEMP_DIR/mantou-toolbox-update-agent.service" /etc/systemd/system/mantou-toolbox-update-agent.service
 systemctl daemon-reload
 systemctl enable --now mantou-toolbox-update-agent.service
