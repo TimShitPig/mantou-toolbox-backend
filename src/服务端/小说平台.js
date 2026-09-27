@@ -60,7 +60,7 @@ function pythonProviderEnvironment(provider, config) {
     PYTHONIOENCODING: 'utf-8',
     PYTHONUNBUFFERED: '1',
   }
-  for (const key of ['SYSTEMROOT', 'WINDIR', 'TMP', 'TEMP', 'HOME', 'LANG', 'LC_ALL', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy']) {
+  for (const key of ['SYSTEMROOT', 'WINDIR', 'TMP', 'TEMP', 'HOME', 'LANG', 'LC_ALL', 'PYTHONPATH', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy']) {
     const value = sourceEntry(key)
     if (value) env[key] = value
   }
