@@ -1,3 +1,12 @@
+import importlib
+import importlib.util
+import sys
+
+if importlib.util.find_spec('Crypto') is None:
+    if importlib.util.find_spec('Cryptodome') is not None:
+        sys.modules['Crypto'] = importlib.import_module('Cryptodome')
+
+
 class ProviderError(RuntimeError):
     """平台可对外报告的错误代码，不包含请求凭据或原始响应。"""
 
