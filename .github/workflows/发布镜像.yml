@@ -33,11 +33,12 @@ jobs:
           node --check src/服务端/数据库.js
           node --check src/服务端/HTTP响应.js
           node --check src/服务端/小说来源.js
+          node --check src/服务端/小说平台.js
           node --check src/服务端/番茄小说下载.js
           node --check src/服务端/自更新.js
           node --check src/服务端/夸克网盘.js
           node --check public/后台界面/管理后台.js
-          python3 -c "import ast,pathlib; ast.parse(pathlib.Path('src/小说下载/番茄正文下载器.py').read_text(encoding='utf-8'))"
+          python3 -c "import ast,pathlib; [ast.parse(p.read_text(encoding='utf-8')) for p in pathlib.Path('src/小说下载').rglob('*.py')]"
           sh -n 部署/一键部署.sh
           sh -n 宿主机更新代理.sh
           docker compose config --quiet

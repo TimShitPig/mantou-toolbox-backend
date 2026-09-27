@@ -1,4 +1,5 @@
 const path = require('node:path')
+const { getNovelProviders } = require('./小说平台')
 
 function bool(value, fallback) {
   if (typeof value === 'boolean') {
@@ -58,6 +59,11 @@ function createConfig(env = process.env, overrides = {}) {
   if (!imageProxyAllowedHosts.includes('novelfmpic.com')) {
     imageProxyAllowedHosts.push('novelfmpic.com')
   }
+  for (const provider of getNovelProviders()) {
+    for (const host of provider.coverHosts || []) {
+      if (!imageProxyAllowedHosts.includes(host)) imageProxyAllowedHosts.push(host)
+    }
+  }
 
   const config = {
     rootDir,
@@ -84,12 +90,13 @@ function createConfig(env = process.env, overrides = {}) {
     parseEnabled: bool(env.PARSE_ENABLED, true),
     qimaoEnabled: bool(env.QIMAO_ENABLED, true),
     fanqieEnabled: bool(env.FANQIE_ENABLED, true),
+    ...Object.fromEntries(getNovelProviders().filter((item) => !['qimao', 'fanqie'].includes(item.id))
+      .map((item) => [`${item.id}Enabled`, bool(env[`NOVEL_${item.id.toUpperCase()}_ENABLED`], true)])),
     fanqieKeysConfigured: bool(env.FANQIE_KEYS_CONFIGURED, false),
     downloadLimit: integer(env.DOWNLOAD_LIMIT, 0, 0),
     rewardedAdEnabled: bool(env.REWARDED_AD_ENABLED, false),
     rewardedAdEveryDownloads: integer(env.REWARDED_AD_EVERY_DOWNLOADS, 3, 1),
     cloudDirectLinkEnabled: bool(env.CLOUD_DIRECT_LINK_ENABLED, true),
-    remoteMetadataEnabled: bool(env.REMOTE_METADATA_ENABLED, false),
     remoteRequestTimeoutMs: integer(env.REMOTE_REQUEST_TIMEOUT_MS, 8000, 1000),
     contentCatalogFile: String(env.CONTENT_CATALOG_FILE || '').trim() || null,
     contentProviderUrl: String(env.CONTENT_PROVIDER_URL || '').trim() || null,

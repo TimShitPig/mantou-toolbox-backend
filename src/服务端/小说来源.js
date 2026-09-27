@@ -1,5 +1,6 @@
 const fs = require('node:fs/promises')
 const { getFanqieBookDetails } = require('./番茄小说下载')
+const { detectNovelSource, getNovelProvider, identifyProviderBook, getProviderBook } = require('./小说平台')
 
 const MAX_EXPORT_BYTES = 10 * 1024 * 1024
 
@@ -36,30 +37,25 @@ function formatChapterCount(value) {
   return /^\d+(?:\.\d+)?$/.test(normalized) ? `${normalized}章` : normalized
 }
 
-function identifyNovelLink(link) {
+async function identifyNovelLink(link) {
   const input = text(link, 4096)
   if (!input) {
     throw Object.assign(new Error('novel_link_required'), { status: 400 })
   }
 
-  const qimaoMatch = input.match(/(?:https?:\/\/)?(?:m\.|www\.)?qimao\.com\/(?:shuku|book)\/(\d+)/i)
-    || input.match(/(?:https?:\/\/)?app-share\.wtzw\.com\/app-h5\/freebook\/(?:article|book)-detail\/(\d+)/i)
-    || input.match(/freereader:\/\/reader_detail\?param=\{"id":"(\d+)"/i)
-    || input.match(/wtzw\.com.*?(\d{6,})/i)
+  const source = detectNovelSource(input)
+  if (!source) throw Object.assign(new Error('unsupported_link'), { status: 400 })
+  if (source && source !== 'fanqie') {
+    const sourceBookId = await identifyProviderBook(source, input)
+    return { source, sourceBookId, originalUrl: input }
+  }
   const fanqieMatch = input.match(/(?:https?:\/\/)?(?:m\.|www\.)?fanqienovel\.com\/page\/(\d+)/i)
     || input.match(/(?:https?:\/\/)?(?:m\.|www\.)?changdunovel\.com\/t\/([a-zA-Z0-9_]+)\/?/i)
     || input.match(/(?:https?:\/\/)?(?:m\.|www\.)?changdunovel\.com.*?book_id=(\d+)/i)
     || input.match(/(?:https?:\/\/)?(?:m\.|www\.)?novelfm\.com\/s\/([a-zA-Z0-9_]+)\/?/i)
     || input.match(/fqnovel\.com.*?book_id=(\d+)/i)
     || input.match(/book_id=(\d+)/i)
-
-  if (qimaoMatch) {
-    return {
-      source: 'qimao',
-      sourceBookId: qimaoMatch[1],
-      originalUrl: `https://m.qimao.com/shuku/${qimaoMatch[1]}/`,
-    }
-  }
+    || input.match(/^(?:fanqie:|番茄(?:小说)?\s*[:：]?\s*)(\d{8,})/i)
   if (fanqieMatch) {
     const isNumeric = /^\d+$/.test(fanqieMatch[1])
     return {
@@ -71,11 +67,7 @@ function identifyNovelLink(link) {
     }
   }
 
-  const qimaoHint = /qimao\.com|wtzw\.com|freereader:\/\//i.test(input)
   const fanqieHint = /fanqienovel\.com|fqnovel\.com|changdunovel\.com|novelfm\.com|iesdouyin\.com|book_id=/i.test(input)
-  if (qimaoHint) {
-    throw Object.assign(new Error('qimao_book_id_not_found'), { status: 400 })
-  }
   if (fanqieHint) {
     throw Object.assign(new Error('fanqie_book_id_not_found'), { status: 400 })
   }
@@ -83,7 +75,7 @@ function identifyNovelLink(link) {
 }
 
 function fallbackBook(identity) {
-  const platformName = identity.source === 'qimao' ? '七猫小说' : '番茄小说'
+  const platformName = getNovelProvider(identity.source)?.name || '小说'
   return {
     coverUrl: '',
     title: `${platformName} ${identity.sourceBookId}`,
@@ -95,6 +87,7 @@ function fallbackBook(identity) {
     source: identity.source,
     sourceBookId: identity.sourceBookId,
     originalUrl: identity.originalUrl,
+    sourceName: getNovelProvider(identity.source)?.name || '小说',
   }
 }
 
@@ -137,36 +130,13 @@ function normalizeBook(candidate, identity) {
   }
 }
 
-async function requestJson(url, config) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/json, text/plain, */*',
-      'User-Agent': 'MantouToolboxBackend/1.0',
-    },
-    signal: AbortSignal.timeout(config.remoteRequestTimeoutMs),
-  })
-  if (!response.ok) {
-    throw new Error(`metadata_status_${response.status}`)
-  }
-  return response.json()
-}
-
-async function fetchRemoteMetadata(identity, config) {
-  const endpoint = new URL('https://api-bc.wtzw.com/api/v1/h5/adapt-reader')
-  endpoint.searchParams.set('book_id', identity.sourceBookId)
-  endpoint.searchParams.set('page', '1')
-  const payload = await requestJson(endpoint, config)
-  const candidate = payload && (payload.data || payload.book || payload)
-  return normalizeBook(candidate, identity)
-}
-
 async function fetchFanqieAppMetadata(identity) {
   const detail = await getFanqieBookDetails(identity.sourceBookId)
   return normalizeBook(detail && (detail.data || detail.book || detail), identity)
 }
 
-async function parseNovel(link, config) {
-  const identity = identifyNovelLink(link)
+async function parseNovel(link, config, resolvedIdentity) {
+  const identity = resolvedIdentity || await identifyNovelLink(link)
   let book = fallbackBook(identity)
   let warning = ''
 
@@ -176,14 +146,8 @@ async function parseNovel(link, config) {
     } catch (error) {
       warning = `fanqie_app_metadata_failed: ${text(error && error.message, 160)}`
     }
-  } else if (config.remoteMetadataEnabled) {
-    try {
-      book = await fetchRemoteMetadata(identity, config)
-    } catch (error) {
-      warning = `metadata_fetch_failed: ${text(error && error.message, 160)}`
-    }
   } else {
-    warning = 'remote_metadata_disabled'
+    book = normalizeBook(await getProviderBook(identity.source, identity.sourceBookId, config), identity)
   }
 
   return { identity, book, warning }
