@@ -1,0 +1,306 @@
+[
+  {
+    "id": "fanqie",
+    "name": "番茄小说",
+    "hosts": [
+      "fanqienovel.com",
+      "fqnovel.com",
+      "changdunovel.com",
+      "novelfm.com",
+      "iesdouyin.com"
+    ],
+    "aliases": [
+      "番茄"
+    ],
+    "coverHosts": [
+      "novelfmpic.com"
+    ],
+    "credentials": []
+  },
+  {
+    "id": "qimao",
+    "name": "七猫小说",
+    "hosts": [
+      "qimao.com",
+      "wtzw.com"
+    ],
+    "aliases": [
+      "七猫"
+    ],
+    "coverHosts": [
+      "cdn.wtzw.com",
+      "img.qimao.com",
+      "static.qimao.com"
+    ],
+    "credentials": [],
+    "module": "七猫"
+  },
+  {
+    "id": "baidu",
+    "name": "百度小说",
+    "hosts": [
+      "boxnovel.baidu.com",
+      "novel.baidu.com",
+      "novelapi.baidu.com"
+    ],
+    "aliases": [
+      "百度"
+    ],
+    "coverHosts": [
+      "dss0.baidu.com",
+      "imgsrc.baidu.com",
+      "imgcdn.bcebos.com",
+      "novel-pic.cdn.bcebos.com",
+      "t7.baidu.com",
+      "ss0.bdstatic.com",
+      "ss1.bdstatic.com"
+    ],
+    "credentials": [],
+    "module": "百度"
+  },
+  {
+    "id": "dejian",
+    "name": "得间小说",
+    "hosts": [
+      "palmestore.com",
+      "idejian.com",
+      "zhangyue.com",
+      "ireader.com"
+    ],
+    "aliases": [
+      "得间"
+    ],
+    "coverHosts": [
+      "palmestore.com",
+      "ireader.com",
+      "zhangyue.com",
+      "idujing.com"
+    ],
+    "credentials": [
+      {
+        "env": "NOVEL_DEJIAN_SESSION",
+        "label": "得间 App 会话",
+        "type": "json",
+        "hint": "JSON 对象，包含本人 App 的 usr、devId 及 p1/p2/p3/p4/p7 等设备与会话参数，仅下载正文时需要。"
+      },
+      {
+        "env": "NOVEL_DEJIAN_SIGN_KEY",
+        "label": "得间 App 签名配置",
+        "hint": "当前 App 协议的 PKCS#8 DER 签名配置（Base64），仅下载正文时需要。"
+      }
+    ],
+    "module": "得间小说"
+  },
+  {
+    "id": "dianzhong",
+    "name": "点众小说",
+    "hosts": [
+      "dianzhong.com"
+    ],
+    "aliases": [
+      "点众"
+    ],
+    "coverHosts": [
+      "dianzhong.com",
+      "dzbook.net",
+      "dzread.cn"
+    ],
+    "credentials": [],
+    "module": "点众小说"
+  },
+  {
+    "id": "jinjiang",
+    "name": "晋江小说",
+    "hosts": [
+      "jjwxc.net"
+    ],
+    "aliases": [
+      "晋江",
+      "晋江文学城"
+    ],
+    "coverHosts": [
+      "jjwxc.net",
+      "jjwxc.com"
+    ],
+    "credentials": [],
+    "module": "晋江小说"
+  },
+  {
+    "id": "kujiang",
+    "name": "酷匠小说",
+    "hosts": [
+      "kujiang.com",
+      "www.kujiang.com",
+      "app.kujiang.com"
+    ],
+    "aliases": [
+      "酷匠",
+      "酷匠小说"
+    ],
+    "coverHosts": [
+      "bs.kjcdn.com"
+    ],
+    "credentials": [
+      {
+        "env": "NOVEL_KUJIANG_AUTH_CODE",
+        "label": "酷匠 App 认证码"
+      }
+    ],
+    "module": "酷匠小说"
+  },
+  {
+    "id": "kuwo",
+    "name": "酷我小说",
+    "hosts": [
+      "kuwo.cn",
+      "www.kuwo.cn",
+      "appi.kuwo.cn",
+      "kuwo.com"
+    ],
+    "aliases": [
+      "酷我",
+      "酷我小说"
+    ],
+    "coverHosts": [
+      "openbookcover.yuewen.com"
+    ],
+    "credentials": [],
+    "module": "酷我小说"
+  },
+  {
+    "id": "midu",
+    "name": "米读小说",
+    "hosts": [
+      "midureader.com",
+      "www.midureader.com",
+      "api.midureader.com",
+      "book.midureader.com",
+      "kuaittt.net",
+      "www.kuaittt.net"
+    ],
+    "aliases": [
+      "米读",
+      "米读小说"
+    ],
+    "coverHosts": [
+      "static.midureader.com"
+    ],
+    "credentials": [],
+    "module": "米读小说"
+  },
+  {
+    "id": "qqread",
+    "name": "QQ阅读",
+    "hosts": [
+      "book.qq.com",
+      "reader.qq.com"
+    ],
+    "aliases": [
+      "QQ阅读",
+      "qq阅读"
+    ],
+    "coverHosts": [
+      "wfqqreader-1252317822.image.myqcloud.com",
+      "bookcover.yuewen.com",
+      "qidian.qpic.cn"
+    ],
+    "credentials": [
+      {
+        "env": "NOVEL_QQREAD_YWGUID",
+        "label": "QQ阅读 ywguid"
+      },
+      {
+        "env": "NOVEL_QQREAD_YWKEY",
+        "label": "QQ阅读 ywkey"
+      },
+      {
+        "env": "NOVEL_QQREAD_FUID",
+        "label": "QQ阅读 App fuid",
+        "hint": "与账号设备对应的正文密钥标识"
+      }
+    ],
+    "module": "QQ阅读"
+  },
+  {
+    "id": "shuqi",
+    "name": "书旗小说",
+    "hosts": [
+      "shuqi.com",
+      "shuqireader.com"
+    ],
+    "aliases": [
+      "书旗"
+    ],
+    "coverHosts": [
+      "img-tail.shuqireader.com",
+      "img.shuqi.com",
+      "img.shuqireader.com"
+    ],
+    "credentials": [
+      {
+        "env": "NOVEL_SHUQI_USER_ID",
+        "label": "书旗 App 用户 ID",
+        "hint": "目录接口签名需要有效的书旗用户 ID"
+      }
+    ],
+    "module": "书旗"
+  },
+  {
+    "id": "tadu",
+    "name": "塔读小说",
+    "hosts": [
+      "tadu.com"
+    ],
+    "aliases": [
+      "塔读"
+    ],
+    "coverHosts": [
+      "media3.tadu.com",
+      "img.tadu.com",
+      "image.tadu.com"
+    ],
+    "credentials": [],
+    "module": "塔读"
+  },
+  {
+    "id": "yisou",
+    "name": "宜搜小说",
+    "hosts": [
+      "ieasou.com",
+      "www.ieasou.com",
+      "api.ieasou.com",
+      "easou.com",
+      "eayue.com",
+      "www.eayue.com",
+      "book.eayue.com"
+    ],
+    "aliases": [
+      "宜搜",
+      "宜搜小说"
+    ],
+    "coverHosts": [],
+    "credentials": [
+      {
+        "env": "NOVEL_YISOU_SESSION_ID",
+        "label": "宜搜 App 会话"
+      }
+    ],
+    "module": "宜搜小说"
+  },
+  {
+    "id": "zhuishu",
+    "name": "追书小说",
+    "hosts": [
+      "zhuishushenqi.com"
+    ],
+    "aliases": [
+      "追书",
+      "追书神器"
+    ],
+    "coverHosts": [
+      "zhuishushenqi.com"
+    ],
+    "credentials": [],
+    "module": "追书小说"
+  }
+]

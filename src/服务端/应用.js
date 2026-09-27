@@ -46,6 +46,7 @@ const {
   parseNovel,
 } = require('./小说来源')
 const { downloadFanqieNovel } = require('./番茄小说下载')
+const { getNovelProviders, getNovelProvider, novelProviderStates, downloadProviderNovel } = require('./小说平台')
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 const MAX_PROXY_BYTES = 5 * 1024 * 1024
@@ -143,6 +144,7 @@ function statusManifest(config, store, session) {
     downloadCountReached: limitEnabled && used >= config.downloadLimit,
     qimaoEnabled: config.qimaoEnabled,
     fanqieEnabled: config.fanqieEnabled,
+    providers: novelProviderStates(config),
     disabledPrompt: config.downloadEnabled ? '' : 'download_disabled',
     parseDisabledPrompt: config.parseEnabled ? '' : 'parse_disabled',
     rewardedAdEnabled: config.rewardedAdEnabled,
@@ -156,8 +158,7 @@ function statusManifest(config, store, session) {
 const ADMIN_SETTING_DEFAULTS = [
   'downloadEnabled',
   'parseEnabled',
-  'qimaoEnabled',
-  'fanqieEnabled',
+  ...getNovelProviders().map((item) => `${item.id}Enabled`),
   'downloadLimit',
   'rewardedAdEnabled',
   'rewardedAdEveryDownloads',
@@ -175,7 +176,7 @@ function validateAdminSettings(patch) {
     if (!allowed.has(key)) {
       throw new ApiError(400, `admin_setting_not_allowed:${key}`)
     }
-    if (['downloadEnabled', 'parseEnabled', 'qimaoEnabled', 'fanqieEnabled', 'rewardedAdEnabled', 'cloudDirectLinkEnabled'].includes(key)) {
+    if (['downloadEnabled', 'parseEnabled', 'rewardedAdEnabled', 'cloudDirectLinkEnabled', ...getNovelProviders().map((item) => `${item.id}Enabled`)].includes(key)) {
       if (typeof value !== 'boolean') {
         throw new ApiError(400, `admin_setting_invalid:${key}`)
       }
@@ -199,13 +200,11 @@ function validateAdminSettings(patch) {
   return result
 }
 
-function assertSourceEnabled(identity, config) {
-  if (identity.source === 'qimao' && !config.qimaoEnabled) {
-    throw new ApiError(503, 'qimao_disabled')
-  }
-  if (identity.source === 'fanqie' && !config.fanqieEnabled) {
-    throw new ApiError(503, 'fanqie_disabled')
-  }
+function assertSourceEnabled(identity, config, requireCredentials = false) {
+  const provider = novelProviderStates(config).find((item) => item.id === identity.source)
+  if (!provider) throw new ApiError(400, 'unsupported_link')
+  if (!provider.enabled) throw new ApiError(503, `${provider.id}_disabled`)
+  if (requireCredentials && !provider.configured) throw new ApiError(503, `${provider.id}_credentials_required`)
 }
 
 async function fetchAllowedImage(url, config) {
@@ -297,6 +296,8 @@ function createApp(options = {}) {
   const store = options.store || createDatabase(config.databasePath)
   const auth = options.auth || createAuth(store, config, options.fetchImpl)
   const fanqieDownloader = options.fanqieDownloader || downloadFanqieNovel
+  const providerDownloader = options.providerDownloader || downloadProviderNovel
+  const novelParser = options.novelParser || parseNovel
   const updateFetch = options.updateFetchImpl || options.fetchImpl || globalThis.fetch
   const proxyFetch = options.proxyFetchImpl || options.fetchImpl || globalThis.fetch
   let server = null
@@ -420,7 +421,12 @@ function createApp(options = {}) {
   }
 
   function getRuntimeConfig() {
-    return { ...config, ...store.getAdminSettings() }
+    const settings = store.getAdminSettings()
+    let credentials = {}
+    try {
+      credentials = JSON.parse(decryptCookie(settings.novelCredentialsEncrypted, `${config.appSecret}:novel-providers`) || '{}')
+    } catch {}
+    return { ...config, ...settings, novelProviderEnv: { ...(config.novelProviderEnv || {}), ...credentials } }
   }
 
   function requireAdminSession(req) {
@@ -486,6 +492,7 @@ function createApp(options = {}) {
         jobs: summary.jobs,
         systemLogs: summary.systemLogs,
         settings: adminSettingsView(runtimeConfig),
+        providers: novelProviderStates(runtimeConfig, true),
         generatedAt: Date.now(),
       },
     }, origin)
@@ -700,6 +707,38 @@ function createApp(options = {}) {
     }
   }
 
+  async function handleAdminNovelProviders(req, res, origin) {
+    requireAdminSession(req)
+    if (req.method === 'GET') {
+      sendJson(res, config, 200, { data: novelProviderStates(getRuntimeConfig(), true) }, origin)
+      return
+    }
+    assertMethod(req, 'PATCH')
+    const body = await readJson(req, 128 * 1024)
+    const provider = getNovelProvider(String(body.source || ''))
+    if (!provider) throw new ApiError(400, 'unsupported_source')
+    const fields = new Map((provider.credentials || []).map((field) => [field.env, field]))
+    const submitted = body.credentials || {}
+    if (typeof submitted !== 'object' || Array.isArray(submitted)) throw new ApiError(400, 'novel_credentials_invalid')
+    const credentials = { ...getRuntimeConfig().novelProviderEnv }
+    for (const [key, value] of Object.entries(submitted)) {
+      if (!fields.has(key) || typeof value !== 'string' || value.length > 32768 || value.includes('\0')) throw new ApiError(400, 'novel_credentials_invalid')
+      if (!value.trim()) continue
+      if (fields.get(key).type === 'json') {
+        let parsed
+        try { parsed = JSON.parse(value) } catch { throw new ApiError(400, 'novel_credentials_json_invalid') }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ApiError(400, 'novel_credentials_json_invalid')
+      }
+      credentials[key] = value.trim()
+    }
+    const clear = body.clearCredentials || []
+    if (!Array.isArray(clear) || clear.some((key) => !fields.has(key))) throw new ApiError(400, 'novel_credentials_invalid')
+    for (const key of clear) delete credentials[key]
+    store.setAdminSettings({ novelCredentialsEncrypted: encryptCookie(JSON.stringify(credentials), `${config.appSecret}:novel-providers`) })
+    recordSystemLog('info', 'settings', 'Updated novel platform credentials', { meta: { source: provider.id } })
+    sendJson(res, config, 200, { data: novelProviderStates(getRuntimeConfig(), true) }, origin)
+  }
+
   async function handleAdminQuark(req, res, origin) {
     requireAdminSession(req)
     if (req.method === 'GET') {
@@ -817,8 +856,16 @@ function createApp(options = {}) {
             }
           },
         })
-      } else {
+      } else if (runtimeConfig.contentCatalogFile || runtimeConfig.contentProviderUrl) {
         result = { text: await buildDownloadText(runtimeConfig, job.book, job.link) }
+      } else {
+        result = await providerDownloader({
+          source: job.source,
+          bookId: job.book.sourceBookId,
+          outputDir: config.downloadDir,
+          config: runtimeConfig,
+          onProgress: ({ total, completed }) => store.updateJobProgress(job.id, total, completed),
+        })
       }
       const text = String(result.text || '')
       if (!text.trim()) {
@@ -829,6 +876,12 @@ function createApp(options = {}) {
         sourceBookId: job.book.sourceBookId,
         originalUrl: job.link,
       }) : job.book
+      const expectedChapters = Number(String(book.chapterCount || '').replace(/\s*章$/, '').trim())
+      const actualChapters = Number(result.chapterCount)
+      if (Number.isSafeInteger(expectedChapters) && expectedChapters > 0
+        && (!Number.isSafeInteger(actualChapters) || actualChapters !== expectedChapters)) {
+        throw new Error('download_incomplete')
+      }
       const output = Buffer.from(formatNovelText(book, text, result.chapterCount), 'utf8')
       const filePath = path.join(config.downloadDir, `${job.id}.txt`)
       await fs.writeFile(filePath, output, { mode: 0o600 })
@@ -1028,9 +1081,9 @@ function createApp(options = {}) {
     const body = await readJson(req)
     let result
     try {
-      const identity = identifyNovelLink(body.link)
+      const identity = await identifyNovelLink(body.link)
       assertSourceEnabled(identity, runtimeConfig)
-      result = await parseNovel(body.link, runtimeConfig)
+      result = await novelParser(body.link, runtimeConfig, identity)
     } catch (error) {
       if (error instanceof ApiError || error instanceof AuthError) {
         throw error
@@ -1050,18 +1103,18 @@ function createApp(options = {}) {
     const body = await readJson(req)
     let identity
     try {
-      identity = identifyNovelLink(body.link)
+      identity = await identifyNovelLink(body.link)
     } catch (error) {
       throw new ApiError(Number(error && error.status) || 400, String(error && error.message || 'unsupported_link'))
     }
-    assertSourceEnabled(identity, runtimeConfig)
+    assertSourceEnabled(identity, runtimeConfig, true)
     const status = statusManifest(runtimeConfig, store, session)
     if (status.downloadCountReached) {
       throw new ApiError(429, 'download_limit_reached')
     }
 
     const requestedSource = normalizeShortText(body.source, 32).toLowerCase()
-    const requestedBookId = normalizeShortText(body.sourceBookId, 128)
+    const requestedBookId = normalizeShortText(body.sourceBookId, 256)
     if ((requestedSource && requestedSource !== identity.source) || (requestedBookId && requestedBookId !== identity.sourceBookId)) {
       throw new ApiError(400, 'download_identity_mismatch')
     }
@@ -1212,6 +1265,7 @@ function createApp(options = {}) {
       if (pathname === '/api/admin/update-operation') return await handleAdminUpdateOperation(req, res, origin)
       if (pathname === '/api/admin/proxies/test') return await handleAdminProxyTest(req, res, origin)
       if (pathname === '/api/admin/settings') return await handleAdminSettings(req, res, origin)
+      if (pathname === '/api/admin/novel-providers') return await handleAdminNovelProviders(req, res, origin)
       if (pathname === '/api/admin/quark') return await handleAdminQuark(req, res, origin)
       if (pathname === '/api/admin/quark/test') return await handleAdminQuarkTest(req, res, origin)
       const quarkFileDeleteMatch = pathname.match(/^\/api\/admin\/quark\/files\/([a-f0-9-]{36})$/i)

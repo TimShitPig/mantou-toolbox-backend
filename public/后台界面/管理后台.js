@@ -33,11 +33,13 @@
   let logRefreshPending = false
   let logRenderDeferred = false
   let systemLogItems = []
+  let novelProviders = []
+  const credentialForms = new Map()
 
   const settingForms = {
     novel: {
       form: document.getElementById('novel-settings-form'),
-      keys: ['qimaoEnabled', 'fanqieEnabled'],
+      keys: [],
       message: document.getElementById('novel-settings-message'),
       state: document.getElementById('novel-settings-state'),
     },
@@ -149,7 +151,7 @@
   }
 
   function sourceLabel(value) {
-    return ({ qimao: '七猫', fanqie: '番茄' })[value] || value || '—'
+    return novelProviders.find((item) => item.id === value)?.name || value || '—'
   }
 
   function appendCell(row, value, className) {
@@ -262,6 +264,107 @@
         else input.value = String(settings[key] ?? 0)
       }
     }
+  }
+
+  function renderNovelProviders(items) {
+    novelProviders = Array.isArray(items) ? items : []
+    const controls = document.getElementById('novel-provider-settings')
+    const credentialContainer = document.getElementById('novel-provider-credentials')
+    settingForms.novel.keys = novelProviders.map((provider) => `${provider.id}Enabled`)
+    for (const provider of novelProviders) {
+      let input = settingForms.novel.form.elements[`${provider.id}Enabled`]
+      if (!input) {
+        const label = document.createElement('label')
+        label.className = 'setting-row'
+        const copy = document.createElement('span')
+        copy.className = 'setting-copy'
+        const title = document.createElement('strong')
+        title.textContent = provider.name
+        const description = document.createElement('small')
+        description.dataset.providerState = provider.id
+        copy.append(title, description)
+        input = document.createElement('input')
+        input.type = 'checkbox'
+        input.name = `${provider.id}Enabled`
+        const decoration = document.createElement('span')
+        decoration.className = 'switch'
+        decoration.setAttribute('aria-hidden', 'true')
+        label.append(copy, input, decoration)
+        controls.append(label)
+      }
+      controls.querySelector(`[data-provider-state="${provider.id}"]`).textContent = provider.configured ? 'App 接口' : '下载前需配置下方登录信息'
+      const fields = provider.credentials || []
+      if (!fields.length) continue
+      if (!credentialForms.has(provider.id)) {
+        const details = document.createElement('details')
+        details.className = 'provider-credentials'
+        const summary = document.createElement('summary')
+        details.append(summary)
+        const form = document.createElement('form')
+        for (const field of fields) {
+          const label = document.createElement('label')
+          label.className = 'provider-credential-field'
+          const title = document.createElement('span')
+          title.className = 'field-label'
+          title.textContent = field.label + (field.required === false ? '（可选）' : '')
+          const input = document.createElement(field.type === 'json' || field.env.endsWith('_SIGN_KEY') ? 'textarea' : 'input')
+          if (input.tagName === 'INPUT') input.type = 'password'
+          else input.rows = 3
+          input.className = 'text-input'
+          input.name = field.env
+          input.maxLength = 32768
+          input.autocomplete = 'new-password'
+          input.spellcheck = false
+          const hint = document.createElement('small')
+          hint.textContent = field.hint || '留空保留已保存的值。'
+          label.append(title, input, hint)
+          form.append(label)
+        }
+        const clearLabel = document.createElement('label')
+        clearLabel.className = 'quark-clear-cookie'
+        const clear = document.createElement('input')
+        clear.type = 'checkbox'
+        clear.name = 'clearCredentials'
+        const clearText = document.createElement('span')
+        clearText.textContent = '清除该平台已保存的登录信息'
+        clearLabel.append(clear, clearText)
+        const footer = document.createElement('div')
+        footer.className = 'form-footer'
+        const message = document.createElement('span')
+        message.className = 'form-message'
+        message.setAttribute('role', 'status')
+        const save = document.createElement('button')
+        save.type = 'submit'
+        save.className = 'button button-primary'
+        save.textContent = '保存登录信息'
+        footer.append(message, save)
+        form.append(clearLabel, footer)
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault()
+          save.disabled = true
+          try {
+            const credentials = Object.fromEntries(fields.map((field) => [field.env, form.elements[field.env].value]))
+            const states = await api('/api/admin/novel-providers', {
+              method: 'PATCH',
+              body: JSON.stringify({ source: provider.id, credentials, clearCredentials: clear.checked ? fields.map((field) => field.env) : [] }),
+            })
+            for (const field of fields) form.elements[field.env].value = ''
+            clear.checked = false
+            renderNovelProviders(states)
+            setMessage(message, '已加密保存并立即生效。', 'success')
+          } catch (error) {
+            setMessage(message, error.message === 'novel_credentials_json_invalid' ? '请填写有效的 JSON 登录配置。' : '保存失败，请检查输入或重新登录。', 'error')
+          } finally { save.disabled = false }
+        })
+        details.append(form)
+        credentialContainer.append(details)
+        credentialForms.set(provider.id, { form, summary })
+      }
+      const saved = credentialForms.get(provider.id)
+      saved.summary.textContent = `${provider.name} · ${provider.configured ? '已配置' : '待配置'}`
+      for (const field of fields) saved.form.elements[field.env].placeholder = field.configured ? '已保存；输入新值可替换' : '尚未配置'
+    }
+    document.getElementById('novel-credentials-section').hidden = credentialForms.size === 0
   }
 
   function formatBytes(value) {
@@ -438,6 +541,7 @@
     try {
       latestData = await api('/api/admin/summary')
       showDashboard()
+      renderNovelProviders(latestData.providers || [])
       renderMetrics(latestData.metrics || {})
       renderJobs(latestData.jobs || [])
       renderSystemLogs(latestData.systemLogs || [])

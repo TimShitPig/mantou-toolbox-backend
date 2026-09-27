@@ -11,7 +11,7 @@
 mkdir -p mantou-toolbox-deploy && cd mantou-toolbox-deploy
 
 # 下载并运行部署准备脚本
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.26/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
+curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.27/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
 
 # 查看日志
 docker compose logs -f backend
@@ -31,14 +31,7 @@ TXT 内部依次包含声明、名称、作者、状态、字数、书籍 ID、�
 
 ## 升级已有部署
 
-已有部署需要运行一次新版部署脚本，以安装宿主机更新代理并增加共享状态目录：
-
-```sh
-cd /root/mantou-toolbox-deploy
-curl -sSL https://gh-proxy.com/https://raw.githubusercontent.com/TimShitPig/mantou-toolbox-backend/v0.0.26/%E9%83%A8%E7%BD%B2/%E4%B8%80%E9%94%AE%E9%83%A8%E7%BD%B2.sh | bash
-```
-
-脚本会保留 `.env` 密钥和 SQLite 数据，并自动重建启动服务。完成后，常规更新和回退都在后台点击完成，无需再输入 Docker 命令。
+已部署的服务器直接在后台点击“立即更新”升级到 `v0.0.27`。本版增加了 App 适配器的 Python 运行库，更新器会检查运行环境指纹并自动完成一次镜像重建，然后复用原容器启动；`.env` 和 SQLite 数据会保留。后续普通源码更新仍由后台直接更新和回退。
 
 ## 自动发布镜像
 
@@ -46,14 +39,14 @@ GitHub Actions 会在 `main` 更新或 `vX.X.X` 标签发布后构建并发布�
 
 ```text
 ghcr.io/timshitpig/mantou-toolbox-backend:latest
-ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.26
+ghcr.io/timshitpig/mantou-toolbox-backend:v0.0.27
 ```
 
 工作流配置见 [发布镜像.yml](.github/workflows/发布镜像.yml)。GHCR 镜像包仍公开发布；服务器的普通源码更新使用 `/app` 挂载源码并重启现有容器，镜像运行环境指纹变化时才从公开源码构建本地镜像。
 
 ## 本地开发
 
-需要 Node.js 24 或更高版本。使用番茄正文下载还需要 Python 3 和 PyCryptodome；Docker 镜像会自动安装它们：
+需要 Node.js 24 或更高版本。小说 App 适配器还需要 Python 3、aiohttp、PyCryptodome、cryptography、NumPy、gmpy2 和 bcrypt；Docker 镜像会自动安装这些运行依赖：
 
 ```powershell
 Copy-Item .env.example .env
@@ -78,9 +71,11 @@ npm start
 
 ## 内容来源配置
 
-解析接口可识别七猫和番茄链接。番茄详情、章节目录和正文分别通过番茄畅听 App 的 `/novelfm/bookapi/detail/v1/`、`/novelfm/bookapi/directory/all_items_v2/v1/`（失败时改用 App 的 v1 目录接口）和 `/novelfm/playerapi/full/mget/v1/` 获取，不请求小说网页；封面 URL 由 App 详情返回，并通过后端图片代理读取 `novelfmpic.com` 图片 CDN。七猫元数据仍由 `REMOTE_METADATA_ENABLED=true` 控制。
+目前接入番茄、七猫、书旗、塔读、百度、酷我、米读、酷匠、宜搜、晋江、得间、点众、追书和 QQ 阅读，共 14 个来源。详情、目录、正文和封面均由后端 App 适配器处理；小程序只请求馒头工具箱后端，封面由后端图片代理读取。
 
-番茄下载任务会调用内置正文下载器，读取目录、每次最多批量请求 1500 章、下载并解密章节，最后生成合并 TXT；章节总数和完成数会回报到现有下载进度接口。Docker 镜像会安装 Python 3、PyCryptodome 和 HEIC 转换工具，封面图片会以 JPEG 返回小程序。七猫正文仍可通过本地内容目录或 `CONTENT_PROVIDER_URL` 接入。
+后台“小说”页可单独启用平台。QQ 阅读、书旗、酷匠、宜搜和得间的正文下载需填写对应 App 登录信息；后台加密保存凭据，只显示是否已配置，不回显原值。其他平台使用 App 接口提供的公开详情、目录和可读取章节。目录不完整或章节无正文时任务会报错，不会生成缺章文件。QQ 浏览器、菠萝包、连城、猫眼、小米和盐言的现有源码使用网页、小程序或第三方正文链路，因此没有作为 App 来源接入。
+
+番茄下载任务会调用内置正文下载器，读取目录、每次最多批量请求 1500 章、下载并解密章节，最后生成合并 TXT；章节总数和完成数会回报到现有下载进度接口。Docker 镜像会安装 Python 3、App 适配器依赖和 HEIC 转换工具，封面图片会以 JPEG 返回小程序。其他平台也会使用各自的 App 详情、目录及章节接口，并共用同一下载进度接口。
 
 本地 JSON 内容目录示例：
 

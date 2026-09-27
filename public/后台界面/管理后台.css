@@ -171,6 +171,12 @@ h1, h2, h3, p { margin-top: 0; }
 .text-input:focus, .quark-cookie-field textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(8,127,99,.12); }
 .quark-folder-row { grid-column: 1 / -1; border-right: 0 !important; }
 .quark-cookie-field { display: grid; gap: 9px; padding: 15px 12px 10px; }
+.provider-credentials { border-top: 1px solid var(--line); padding: 12px; }
+.provider-credentials summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+.provider-credential-field { display: grid; gap: 6px; margin-top: 14px; }
+.provider-credential-field .text-input { width: 100%; min-height: 36px; }
+.provider-credential-field textarea { resize: vertical; padding: 8px; line-height: 1.5; }
+.provider-credential-field small { color: #64748b; line-height: 1.5; }
 .quark-cookie-field textarea { width: 100%; min-height: 96px; padding: 9px 10px; resize: vertical; border: 1px solid #cbd5d1; border-radius: 4px; color: var(--ink); background: #fff; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.5; outline: none; }
 .quark-clear-cookie { display: inline-flex; min-height: 28px; align-items: center; gap: 7px; margin: 0 12px; color: #58676d; font-size: 11px; cursor: pointer; }
 .quark-clear-cookie input { width: 14px; height: 14px; margin: 0; accent-color: var(--green); }

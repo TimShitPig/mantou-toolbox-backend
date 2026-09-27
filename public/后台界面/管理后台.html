@@ -64,21 +64,16 @@
           <section class="settings-section">
             <div class="section-subheading"><h3>来源配置</h3><span>控制可解析和下载的平台</span></div>
             <form id="novel-settings-form">
-              <div class="settings-grid">
-                <label class="setting-row">
-                  <span class="setting-copy"><strong>七猫小说</strong><small>接收七猫书籍链接</small></span>
-                  <input name="qimaoEnabled" type="checkbox"><span class="switch" aria-hidden="true"></span>
-                </label>
-                <label class="setting-row">
-                  <span class="setting-copy"><strong>番茄小说</strong><small>接收番茄书籍链接</small></span>
-                  <input name="fanqieEnabled" type="checkbox"><span class="switch" aria-hidden="true"></span>
-                </label>
-              </div>
+              <div id="novel-provider-settings" class="settings-grid"></div>
               <div class="form-footer">
                 <span id="novel-settings-message" class="form-message" role="status"></span>
                 <button class="button button-primary" type="submit">保存设置</button>
               </div>
             </form>
+          </section>
+          <section id="novel-credentials-section" class="settings-section page-section" hidden>
+            <div class="section-subheading"><h3>平台登录信息</h3><span>按需填写，保存后立即生效</span></div>
+            <div id="novel-provider-credentials"></div>
           </section>
           <section class="activity-section">
             <div class="section-heading section-heading-compact">

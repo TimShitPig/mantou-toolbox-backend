@@ -5,6 +5,8 @@ storage
 coverage
 test
 node_modules
+**/__pycache__/
+*.py[cod]
 Dockerfile
 compose.yaml
 deploy/
