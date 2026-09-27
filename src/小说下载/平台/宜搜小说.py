@@ -5,7 +5,6 @@ import json
 import os
 import re
 import time
-import uuid
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from .公共 import ProviderError
@@ -15,10 +14,16 @@ PLATFORM = {
     "id": "yisou", "name": "宜搜小说",
     "hosts": ["ieasou.com", "www.ieasou.com", "api.ieasou.com", "easou.com", "eayue.com", "www.eayue.com", "book.eayue.com"], "aliases": ["宜搜", "宜搜小说"],
     "coverHosts": [],
-    "credentials": [{"env": "NOVEL_YISOU_SESSION_ID", "label": "宜搜 App 会话"}],
+    "credentials": [{"env": "NOVEL_YISOU_SESSION_ID", "label": "宜搜 App 会话", "hint": "内置默认值；可填写自己的会话覆盖。", "defaultAvailable": True}],
 }
 BASE = "https://api.ieasou.com"
 SIGNING_KEY = "EaSoU0517+PuBlIsHkEy-JRKKOWTUNZCNTWY-"
+DEFAULT_ACCOUNT = {
+    "session_id": "153F4EEE16F56A43FD63ZD21B866413ED9BE044EFB876A115C62DBED82EE4C824D",
+    "udid": "3d3ec742930b635fc4c61f0575dbc4d2939edbe2",
+    "birt": "1706674841000",
+    "pushid": "7b4aaf1210a5bdbac3cea26d5030a419",
+}
 
 
 def identify(value: str) -> str:
@@ -41,10 +46,9 @@ def identify(value: str) -> str:
 
 
 def account():
-    value = os.environ.get("NOVEL_YISOU_SESSION_ID", "").strip()
-    if not value:
-        raise ProviderError("credentials_required")
-    return {"session_id": value, "udid": uuid.uuid4().hex}
+    identity = DEFAULT_ACCOUNT.copy()
+    identity["session_id"] = os.environ.get("NOVEL_YISOU_SESSION_ID", "").strip() or identity["session_id"]
+    return identity
 
 
 def common(identity):

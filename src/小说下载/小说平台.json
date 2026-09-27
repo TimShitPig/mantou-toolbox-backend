@@ -81,12 +81,14 @@
         "env": "NOVEL_DEJIAN_SESSION",
         "label": "得间 App 会话",
         "type": "json",
-        "hint": "JSON 对象，包含本人 App 的 usr、devId 及 p1/p2/p3/p4/p7 等设备与会话参数，仅下载正文时需要。"
+        "hint": "内置默认值；可填写自己的会话覆盖。",
+        "defaultAvailable": true
       },
       {
         "env": "NOVEL_DEJIAN_SIGN_KEY",
         "label": "得间 App 签名配置",
-        "hint": "当前 App 协议的 PKCS#8 DER 签名配置（Base64），仅下载正文时需要。"
+        "hint": "内置默认值；可填写自己的签名配置覆盖。",
+        "defaultAvailable": true
       }
     ],
     "module": "得间小说"
@@ -142,8 +144,20 @@
     ],
     "credentials": [
       {
+        "env": "NOVEL_KUJIANG_CATALOG_AUTH_CODE",
+        "label": "酷匠目录认证码",
+        "defaultAvailable": true
+      },
+      {
+        "env": "NOVEL_KUJIANG_READ_AUTH_CODE",
+        "label": "酷匠正文认证码",
+        "defaultAvailable": true
+      },
+      {
         "env": "NOVEL_KUJIANG_AUTH_CODE",
-        "label": "酷匠 App 认证码"
+        "label": "酷匠旧版认证码",
+        "required": false,
+        "showInAdmin": false
       }
     ],
     "module": "酷匠小说"
@@ -240,7 +254,8 @@
       {
         "env": "NOVEL_SHUQI_USER_ID",
         "label": "书旗 App 用户 ID",
-        "hint": "目录接口签名需要有效的书旗用户 ID"
+        "hint": "内置默认值；可填写自己的用户 ID 覆盖。",
+        "defaultAvailable": true
       }
     ],
     "module": "书旗"
@@ -282,7 +297,9 @@
     "credentials": [
       {
         "env": "NOVEL_YISOU_SESSION_ID",
-        "label": "宜搜 App 会话"
+        "label": "宜搜 App 会话",
+        "hint": "内置默认值；可填写自己的会话覆盖。",
+        "defaultAvailable": true
       }
     ],
     "module": "宜搜小说"

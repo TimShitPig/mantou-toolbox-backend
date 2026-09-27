@@ -78,8 +78,8 @@ function novelProviderStates(config = {}, admin = false) {
     hosts: provider.hosts,
     aliases: provider.aliases || [],
     enabled: config[`${provider.id}Enabled`] !== false,
-    configured: (provider.credentials || []).filter((field) => field.required !== false).every((field) => Boolean(String(env[field.env] || '').trim())),
-    ...(admin ? { credentials: (provider.credentials || []).map((field) => ({ ...field, configured: Boolean(String(env[field.env] || '').trim()) })) } : {}),
+    configured: (provider.credentials || []).filter((field) => field.required !== false).every((field) => field.defaultAvailable === true || Boolean(String(env[field.env] || '').trim())),
+    ...(admin ? { credentials: (provider.credentials || []).filter((field) => field.showInAdmin !== false).map((field) => ({ ...field, configured: field.defaultAvailable === true || Boolean(String(env[field.env] || '').trim()) })) } : {}),
   }))
 }
 

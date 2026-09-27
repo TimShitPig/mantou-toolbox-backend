@@ -5,6 +5,7 @@ import html
 import json
 import os
 import re
+import secrets
 import time
 from urllib.parse import parse_qs, urlsplit
 
@@ -19,12 +20,14 @@ PLATFORM = {
     'aliases': ['得间'],
     'coverHosts': ['palmestore.com', 'ireader.com', 'zhangyue.com', 'idujing.com'],
     'credentials': [
-        {'env': 'NOVEL_DEJIAN_SESSION', 'label': '得间 App 会话', 'type': 'json', 'hint': 'JSON 对象，包含本人 App 的 usr、devId 及 p1/p2/p3/p4/p7 等设备与会话参数，仅下载正文时需要。'},
-        {'env': 'NOVEL_DEJIAN_SIGN_KEY', 'label': '得间 App 签名配置', 'hint': '当前 App 协议的 PKCS#8 DER 签名配置（Base64），仅下载正文时需要。'},
+        {'env': 'NOVEL_DEJIAN_SESSION', 'label': '得间 App 会话', 'type': 'json', 'hint': '内置默认值；可填写自己的会话覆盖。', 'defaultAvailable': True},
+        {'env': 'NOVEL_DEJIAN_SIGN_KEY', 'label': '得间 App 签名配置', 'hint': '内置默认值；可填写自己的签名配置覆盖。', 'defaultAvailable': True},
     ],
 }
 BASE = 'https://dj.palmestore.com'
 CDN_HOSTS = ('palmestore.com', 'ireader.com', 'zhangyue.com', 'idujing.com')
+DEFAULT_SIGN_KEY = 'MIICdQIBADANBgkqhkiG9w0BAQEFAASCAl8wggJbAgEAAoGBAMXGjyS3p+3AVnlBJe5VQ6tC9inh8tVBve4r+yBjC5HQD6th2n3tSyuNVYaNRAFSEq+OENwnwwhjbYUnjLWb+qZscB43K1+4/WlKdvfgwQVXm0ZQ2+jMBf+165UBEEuuWT2WqXeKkkUqPQta5lrt4eFfbo53JcOO4D5fDSGQS5bZAgMBAAECgYAor4I/AXEQXeLsKtTMxMmY77uIPi0gZdfWqUGOFhIJOw4eKZEzGp++I+MWPPVieCnT55vcTmm2zg13uP0fVykmukWqZszG/ZNpPKYleOqnZOqQj7O3au8Ywz18F/pqD++PsUzxRVeXxSOOwmjQ0D2Pe/9yutz62pyiFGAzDsaI6QJBAMn8DeBT3AtcWuONdiHL3yC4NkGJDdyBbMOaWyvrcvUUZr13uS9mZO6pLTN6v9tkmPUdvYxcPTJ9wdGR7NcNPDsCQQD6qluGI2VAlz4s5UoDnelFKrwDPeiruE3I6wsrasK6h37DsAE6OrQgx2dm4yH7ntJHUlJCZ5ay1EBNfEexgQv7AkA1r2vUwxVKY7q4nqHWa8SbgrrRAmePw0qwVreC3erJHyoLk+XBpnqPQKIF+8tAueU5yTTXOLD/WZOJazrDEf5/AkBpwG+Ggu5Xtrcbd8ynA/sDHElf0MGVmNbwOgFnWs42pa1cX6fU6ilOXvIH3TFcF6A9SMS9kThpz9QlHJaek4P7AkAavQillA/wnrha9GsK5UFmzmwNfkjLLW4psAUsXOsqFXWMoxTd0xWuSbuVOzERpbFMBl1VoZQmD9BLSVOTNe+v'
+DEFAULT_P7 = '__7418529630abcdef'
 
 
 def identify(value):
@@ -103,11 +106,15 @@ async def get_book(book_id):
 
 
 def _credentials():
+    params = {'p3': '25272056', 'usr': str(secrets.randbelow(90_000_000) + 10_000_000), 'p7': DEFAULT_P7, 'p31': DEFAULT_P7, 'p30': '__', 'devId': DEFAULT_P7}
     try:
-        params = json.loads(os.environ.get('NOVEL_DEJIAN_SESSION') or '{}')
+        override = json.loads(os.environ.get('NOVEL_DEJIAN_SESSION') or '{}')
     except (TypeError, ValueError):
         raise ProviderError('credentials_required') from None
-    key = os.environ.get('NOVEL_DEJIAN_SIGN_KEY') or ''
+    if not isinstance(override, dict):
+        raise ProviderError('credentials_required')
+    params.update(override)
+    key = os.environ.get('NOVEL_DEJIAN_SIGN_KEY') or DEFAULT_SIGN_KEY
     if not isinstance(params, dict) or not params.get('usr') or not params.get('devId') or not key:
         raise ProviderError('credentials_required')
     if any(not isinstance(value, (str, int, float, bool)) for value in params.values()):
