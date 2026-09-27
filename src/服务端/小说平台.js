@@ -48,6 +48,11 @@ function providerEnvironment(config = {}) {
   return { ...process.env, ...(config.novelProviderEnv || {}) }
 }
 
+function maskPhone(value) {
+  const phone = String(value || '').trim()
+  return /^1\d{10}$/.test(phone) ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : ''
+}
+
 function pythonProviderEnvironment(provider, config) {
   const source = providerEnvironment(config)
   const sourceEntry = (name) => {
@@ -79,7 +84,16 @@ function novelProviderStates(config = {}, admin = false) {
     aliases: provider.aliases || [],
     enabled: config[`${provider.id}Enabled`] !== false,
     configured: (provider.credentials || []).filter((field) => field.required !== false).every((field) => field.defaultAvailable === true || Boolean(String(env[field.env] || '').trim())),
-    ...(admin ? { credentials: (provider.credentials || []).filter((field) => field.showInAdmin !== false).map((field) => ({ ...field, configured: field.defaultAvailable === true || Boolean(String(env[field.env] || '').trim()) })) } : {}),
+    ...(admin ? {
+      credentials: (provider.credentials || []).filter((field) => field.showInAdmin !== false).map((field) => ({ ...field, configured: field.defaultAvailable === true || Boolean(String(env[field.env] || '').trim()) })),
+      ...(provider.id === 'qqread' ? {
+        account: {
+          configured: Boolean(String(env.NOVEL_QQREAD_YWGUID || '').trim() && String(env.NOVEL_QQREAD_YWKEY || '').trim()),
+          phone: maskPhone(env.NOVEL_QQREAD_PHONE),
+          nickname: String(env.NOVEL_QQREAD_NICKNAME || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 48),
+        },
+      } : {}),
+    } : {}),
   }))
 }
 

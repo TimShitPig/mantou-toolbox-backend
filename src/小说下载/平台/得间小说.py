@@ -3,7 +3,6 @@ import asyncio
 import base64
 import html
 import json
-import os
 import re
 import secrets
 import time
@@ -19,10 +18,7 @@ PLATFORM = {
     'hosts': ['palmestore.com', 'idejian.com', 'zhangyue.com', 'ireader.com'],
     'aliases': ['得间'],
     'coverHosts': ['palmestore.com', 'ireader.com', 'zhangyue.com', 'idujing.com'],
-    'credentials': [
-        {'env': 'NOVEL_DEJIAN_SESSION', 'label': '得间 App 会话', 'type': 'json', 'hint': '内置默认值；可填写自己的会话覆盖。', 'defaultAvailable': True},
-        {'env': 'NOVEL_DEJIAN_SIGN_KEY', 'label': '得间 App 签名配置', 'hint': '内置默认值；可填写自己的签名配置覆盖。', 'defaultAvailable': True},
-    ],
+    'credentials': [],
 }
 BASE = 'https://dj.palmestore.com'
 CDN_HOSTS = ('palmestore.com', 'ireader.com', 'zhangyue.com', 'idujing.com')
@@ -108,19 +104,7 @@ async def get_book(book_id):
 def _credentials():
     params = {'p3': '25272056', 'usr': str(secrets.randbelow(90_000_000) + 10_000_000), 'p7': DEFAULT_P7, 'p31': DEFAULT_P7, 'p30': '__', 'devId': DEFAULT_P7}
     try:
-        override = json.loads(os.environ.get('NOVEL_DEJIAN_SESSION') or '{}')
-    except (TypeError, ValueError):
-        raise ProviderError('credentials_required') from None
-    if not isinstance(override, dict):
-        raise ProviderError('credentials_required')
-    params.update(override)
-    key = os.environ.get('NOVEL_DEJIAN_SIGN_KEY') or DEFAULT_SIGN_KEY
-    if not isinstance(params, dict) or not params.get('usr') or not params.get('devId') or not key:
-        raise ProviderError('credentials_required')
-    if any(not isinstance(value, (str, int, float, bool)) for value in params.values()):
-        raise ProviderError('credentials_required')
-    try:
-        signer = serialization.load_der_private_key(base64.b64decode(key, validate=True), password=None)
+        signer = serialization.load_der_private_key(base64.b64decode(DEFAULT_SIGN_KEY, validate=True), password=None)
     except (TypeError, ValueError):
         raise ProviderError('credentials_required') from None
     return {str(k): str(v) for k, v in params.items()}, signer

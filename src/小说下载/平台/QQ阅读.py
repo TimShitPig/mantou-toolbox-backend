@@ -12,7 +12,7 @@ from Crypto.Cipher import AES, DES
 from Crypto.Hash import MD2, MD4
 from Crypto.Util import Counter
 import bcrypt as _bcrypt
-PLATFORM = {'id': 'qqread', 'name': 'QQ阅读', 'hosts': ['book.qq.com', 'reader.qq.com'], 'aliases': ['QQ阅读', 'qq阅读'], 'coverHosts': ['wfqqreader-1252317822.image.myqcloud.com', 'bookcover.yuewen.com', 'qidian.qpic.cn'], 'credentials': [{'env': 'NOVEL_QQREAD_YWGUID', 'label': 'QQ阅读 ywguid'}, {'env': 'NOVEL_QQREAD_YWKEY', 'label': 'QQ阅读 ywkey'}, {'env': 'NOVEL_QQREAD_FUID', 'label': 'QQ阅读 App fuid', 'hint': '与账号设备对应的正文密钥标识'}]}
+PLATFORM = {'id': 'qqread', 'name': 'QQ阅读', 'hosts': ['book.qq.com', 'reader.qq.com'], 'aliases': ['QQ阅读', 'qq阅读'], 'coverHosts': ['wfqqreader-1252317822.image.myqcloud.com', 'bookcover.yuewen.com', 'qidian.qpic.cn'], 'credentials': [{'env': 'NOVEL_QQREAD_YWGUID', 'label': 'QQ阅读账号标识', 'showInAdmin': False}, {'env': 'NOVEL_QQREAD_YWKEY', 'label': 'QQ阅读账号密钥', 'showInAdmin': False}, {'env': 'NOVEL_QQREAD_FUID', 'label': 'QQ阅读正文标识', 'required': False, 'defaultAvailable': True, 'showInAdmin': False}, {'env': 'NOVEL_QQREAD_PHONE', 'label': 'QQ阅读手机号', 'required': False, 'showInAdmin': False}, {'env': 'NOVEL_QQREAD_NICKNAME', 'label': 'QQ阅读昵称', 'required': False, 'showInAdmin': False}]}
 KNVA_AES_KEY = b'c9ajudte0zb21ksg'
 KNVA_AES_IV = b'58jb6v2lzcspwymg'
 KNVA_CIPHERTEXT = bytes.fromhex('8f400c5fcec88186569c7c407e35d2895495f9025321cd94976e786a65f18550')
@@ -483,7 +483,8 @@ def tar_decrypt(stream: Union[BinaryIO, bytes]) -> Dict[str, object]:
         logger.debug(f'QQ阅读参考 tar 解析失败：错误={type(e).__name__}')
         result['code'] = -1
         return result
-CONFIG = {'loginType': '50', 'c_platform': 'android', 'c_version': 'qqreader_8.3.3.0888_android', 'channel': '10005136'} | {'uid': os.environ.get('NOVEL_QQREAD_YWGUID', '').strip(), 'usid': os.environ.get('NOVEL_QQREAD_YWKEY', '').strip(), 'fuid': os.environ.get('NOVEL_QQREAD_FUID', '').strip(), 'qrsn': secrets.token_hex(8)}
+QQ阅读默认正文标识 = '89306811035542cd868d49def7d3857d'
+CONFIG = {'loginType': '50', 'c_platform': 'android', 'c_version': 'qqreader_8.3.3.0888_android', 'channel': '10005136'} | {'uid': os.environ.get('NOVEL_QQREAD_YWGUID', '').strip(), 'usid': os.environ.get('NOVEL_QQREAD_YWKEY', '').strip(), 'fuid': os.environ.get('NOVEL_QQREAD_FUID', '').strip() or QQ阅读默认正文标识, 'qrsn': secrets.token_hex(8)}
 _固定配置已加载 = False
 _固定配置加载锁 = threading.Lock()
 
@@ -1054,10 +1055,13 @@ def identify(value):
     return identify_id(value, PLATFORM['hosts'], ['bid', 'bookid', 'bookId', 'book_id'], ['/book-detail/(\\d+)', '/book/(\\d+)', '/(\\d+)(?:\\.html)?$'])
 
 def _credentials():
-    if not all((os.environ.get(key, '').strip() for key in ('NOVEL_QQREAD_YWGUID', 'NOVEL_QQREAD_YWKEY', 'NOVEL_QQREAD_FUID'))):
+    ywguid = os.environ.get('NOVEL_QQREAD_YWGUID', '').strip()
+    ywkey = os.environ.get('NOVEL_QQREAD_YWKEY', '').strip()
+    fuid = os.environ.get('NOVEL_QQREAD_FUID', '').strip() or QQ阅读默认正文标识
+    if not ywguid or not ywkey:
         raise ProviderError('credentials_required')
     load_config_once()
-    ConfigManager.get_instance().apply({'uid': os.environ['NOVEL_QQREAD_YWGUID'].strip(), 'usid': os.environ['NOVEL_QQREAD_YWKEY'].strip(), 'fuid': os.environ['NOVEL_QQREAD_FUID'].strip()})
+    ConfigManager.get_instance().apply({'uid': ywguid, 'usid': ywkey, 'fuid': fuid})
 
 async def _load_book(http, identity):
     raw = await _retry(lambda: 获取参考书籍详情(identity, http))

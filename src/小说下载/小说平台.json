@@ -76,21 +76,7 @@
       "zhangyue.com",
       "idujing.com"
     ],
-    "credentials": [
-      {
-        "env": "NOVEL_DEJIAN_SESSION",
-        "label": "得间 App 会话",
-        "type": "json",
-        "hint": "内置默认值；可填写自己的会话覆盖。",
-        "defaultAvailable": true
-      },
-      {
-        "env": "NOVEL_DEJIAN_SIGN_KEY",
-        "label": "得间 App 签名配置",
-        "hint": "内置默认值；可填写自己的签名配置覆盖。",
-        "defaultAvailable": true
-      }
-    ],
+    "credentials": [],
     "module": "得间小说"
   },
   {
@@ -142,24 +128,7 @@
     "coverHosts": [
       "bs.kjcdn.com"
     ],
-    "credentials": [
-      {
-        "env": "NOVEL_KUJIANG_CATALOG_AUTH_CODE",
-        "label": "酷匠目录认证码",
-        "defaultAvailable": true
-      },
-      {
-        "env": "NOVEL_KUJIANG_READ_AUTH_CODE",
-        "label": "酷匠正文认证码",
-        "defaultAvailable": true
-      },
-      {
-        "env": "NOVEL_KUJIANG_AUTH_CODE",
-        "label": "酷匠旧版认证码",
-        "required": false,
-        "showInAdmin": false
-      }
-    ],
+    "credentials": [],
     "module": "酷匠小说"
   },
   {
@@ -221,16 +190,32 @@
     "credentials": [
       {
         "env": "NOVEL_QQREAD_YWGUID",
-        "label": "QQ阅读 ywguid"
+        "label": "QQ阅读账号标识",
+        "showInAdmin": false
       },
       {
         "env": "NOVEL_QQREAD_YWKEY",
-        "label": "QQ阅读 ywkey"
+        "label": "QQ阅读账号密钥",
+        "showInAdmin": false
       },
       {
         "env": "NOVEL_QQREAD_FUID",
-        "label": "QQ阅读 App fuid",
-        "hint": "与账号设备对应的正文密钥标识"
+        "label": "QQ阅读正文标识",
+        "required": false,
+        "defaultAvailable": true,
+        "showInAdmin": false
+      },
+      {
+        "env": "NOVEL_QQREAD_PHONE",
+        "label": "QQ阅读手机号",
+        "required": false,
+        "showInAdmin": false
+      },
+      {
+        "env": "NOVEL_QQREAD_NICKNAME",
+        "label": "QQ阅读昵称",
+        "required": false,
+        "showInAdmin": false
       }
     ],
     "module": "QQ阅读"
@@ -250,14 +235,7 @@
       "img.shuqi.com",
       "img.shuqireader.com"
     ],
-    "credentials": [
-      {
-        "env": "NOVEL_SHUQI_USER_ID",
-        "label": "书旗 App 用户 ID",
-        "hint": "内置默认值；可填写自己的用户 ID 覆盖。",
-        "defaultAvailable": true
-      }
-    ],
+    "credentials": [],
     "module": "书旗"
   },
   {
@@ -294,14 +272,7 @@
       "宜搜小说"
     ],
     "coverHosts": [],
-    "credentials": [
-      {
-        "env": "NOVEL_YISOU_SESSION_ID",
-        "label": "宜搜 App 会话",
-        "hint": "内置默认值；可填写自己的会话覆盖。",
-        "defaultAvailable": true
-      }
-    ],
+    "credentials": [],
     "module": "宜搜小说"
   },
   {

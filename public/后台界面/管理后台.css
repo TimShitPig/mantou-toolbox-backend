@@ -171,17 +171,23 @@ h1, h2, h3, p { margin-top: 0; }
 .text-input:focus, .quark-cookie-field textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(8,127,99,.12); }
 .quark-folder-row { grid-column: 1 / -1; border-right: 0 !important; }
 .quark-cookie-field { display: grid; gap: 9px; padding: 15px 12px 10px; }
-.provider-credentials { border-top: 1px solid var(--line); padding: 12px; }
-.provider-credentials summary { cursor: pointer; color: var(--ink); font-weight: 600; }
-.provider-credential-field { display: grid; gap: 6px; margin-top: 14px; }
-.provider-credential-field .text-input { width: 100%; min-height: 36px; }
-.provider-credential-field textarea { resize: vertical; padding: 8px; line-height: 1.5; }
-.provider-credential-field small { color: #64748b; line-height: 1.5; }
+.qqread-login { display: grid; max-width: 620px; gap: 10px; padding: 12px 0; }
+.qqread-login-status { margin: 0; color: #64748b; font-size: 12px; font-weight: 600; }
+.qqread-login-status.is-connected { color: var(--green); }
+.qqread-login-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.qqread-login-row .text-input { width: 100%; }
+.qqread-login-footer { display: flex; min-height: 34px; align-items: center; justify-content: space-between; gap: 12px; }
 .quark-cookie-field textarea { width: 100%; min-height: 96px; padding: 9px 10px; resize: vertical; border: 1px solid #cbd5d1; border-radius: 4px; color: var(--ink); background: #fff; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.5; outline: none; }
 .quark-clear-cookie { display: inline-flex; min-height: 28px; align-items: center; gap: 7px; margin: 0 12px; color: #58676d; font-size: 11px; cursor: pointer; }
 .quark-clear-cookie input { width: 14px; height: 14px; margin: 0; accent-color: var(--green); }
 .quark-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .form-footer { display: flex; min-height: 48px; align-items: end; justify-content: space-between; gap: 12px; padding-top: 12px; }
+
+@media (max-width: 560px) {
+  .qqread-login-row { grid-template-columns: 1fr; }
+  .qqread-login-row .button { width: 100%; }
+  .qqread-login-footer { align-items: flex-start; flex-direction: column; }
+}
 
 .activity-section { margin-top: 16px; overflow: hidden; }
 .section-heading-compact { display: flex; min-height: 55px; align-items: center; justify-content: space-between; padding: 11px 15px; }

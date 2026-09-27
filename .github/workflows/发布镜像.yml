@@ -34,6 +34,7 @@ jobs:
           node --check src/服务端/HTTP响应.js
           node --check src/服务端/小说来源.js
           node --check src/服务端/小说平台.js
+          node --check src/服务端/QQ阅读手机号登录.js
           node --check src/服务端/番茄小说下载.js
           node --check src/服务端/自更新.js
           node --check src/服务端/夸克网盘.js

@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import os
 import re
 import time
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -14,7 +13,7 @@ PLATFORM = {
     "id": "yisou", "name": "宜搜小说",
     "hosts": ["ieasou.com", "www.ieasou.com", "api.ieasou.com", "easou.com", "eayue.com", "www.eayue.com", "book.eayue.com"], "aliases": ["宜搜", "宜搜小说"],
     "coverHosts": [],
-    "credentials": [{"env": "NOVEL_YISOU_SESSION_ID", "label": "宜搜 App 会话", "hint": "内置默认值；可填写自己的会话覆盖。", "defaultAvailable": True}],
+    "credentials": [],
 }
 BASE = "https://api.ieasou.com"
 SIGNING_KEY = "EaSoU0517+PuBlIsHkEy-JRKKOWTUNZCNTWY-"
@@ -46,9 +45,7 @@ def identify(value: str) -> str:
 
 
 def account():
-    identity = DEFAULT_ACCOUNT.copy()
-    identity["session_id"] = os.environ.get("NOVEL_YISOU_SESSION_ID", "").strip() or identity["session_id"]
-    return identity
+    return DEFAULT_ACCOUNT.copy()
 
 
 def common(identity):

@@ -34,7 +34,7 @@
   let logRenderDeferred = false
   let systemLogItems = []
   let novelProviders = []
-  const credentialForms = new Map()
+  let qqReadSessionKey = ''
 
   const settingForms = {
     novel: {
@@ -269,7 +269,6 @@
   function renderNovelProviders(items) {
     novelProviders = Array.isArray(items) ? items : []
     const controls = document.getElementById('novel-provider-settings')
-    const credentialContainer = document.getElementById('novel-provider-credentials')
     settingForms.novel.keys = novelProviders.map((provider) => `${provider.id}Enabled`)
     for (const provider of novelProviders) {
       let input = settingForms.novel.form.elements[`${provider.id}Enabled`]
@@ -292,79 +291,160 @@
         label.append(copy, input, decoration)
         controls.append(label)
       }
-      controls.querySelector(`[data-provider-state="${provider.id}"]`).textContent = provider.configured ? 'App 接口' : '下载前需配置下方登录信息'
-      const fields = provider.credentials || []
-      if (!fields.length) continue
-      if (!credentialForms.has(provider.id)) {
-        const details = document.createElement('details')
-        details.className = 'provider-credentials'
-        const summary = document.createElement('summary')
-        details.append(summary)
-        const form = document.createElement('form')
-        for (const field of fields) {
-          const label = document.createElement('label')
-          label.className = 'provider-credential-field'
-          const title = document.createElement('span')
-          title.className = 'field-label'
-          title.textContent = field.label + (field.required === false ? '（可选）' : '')
-          const input = document.createElement(field.type === 'json' || field.env.endsWith('_SIGN_KEY') ? 'textarea' : 'input')
-          if (input.tagName === 'INPUT') input.type = 'password'
-          else input.rows = 3
-          input.className = 'text-input'
-          input.name = field.env
-          input.maxLength = 32768
-          input.autocomplete = 'new-password'
-          input.spellcheck = false
-          const hint = document.createElement('small')
-          hint.textContent = field.hint || '留空保留已保存的值。'
-          label.append(title, input, hint)
-          form.append(label)
-        }
-        const clearLabel = document.createElement('label')
-        clearLabel.className = 'quark-clear-cookie'
-        const clear = document.createElement('input')
-        clear.type = 'checkbox'
-        clear.name = 'clearCredentials'
-        const clearText = document.createElement('span')
-        clearText.textContent = '清除该平台已保存的登录信息'
-        clearLabel.append(clear, clearText)
-        const footer = document.createElement('div')
-        footer.className = 'form-footer'
-        const message = document.createElement('span')
-        message.className = 'form-message'
-        message.setAttribute('role', 'status')
-        const save = document.createElement('button')
-        save.type = 'submit'
-        save.className = 'button button-primary'
-        save.textContent = '保存登录信息'
-        footer.append(message, save)
-        form.append(clearLabel, footer)
-        form.addEventListener('submit', async (event) => {
-          event.preventDefault()
-          save.disabled = true
-          try {
-            const credentials = Object.fromEntries(fields.map((field) => [field.env, form.elements[field.env].value]))
-            const states = await api('/api/admin/novel-providers', {
-              method: 'PATCH',
-              body: JSON.stringify({ source: provider.id, credentials, clearCredentials: clear.checked ? fields.map((field) => field.env) : [] }),
-            })
-            for (const field of fields) form.elements[field.env].value = ''
-            clear.checked = false
-            renderNovelProviders(states)
-            setMessage(message, '已加密保存并立即生效。', 'success')
-          } catch (error) {
-            setMessage(message, error.message === 'novel_credentials_json_invalid' ? '请填写有效的 JSON 登录配置。' : '保存失败，请检查输入或重新登录。', 'error')
-          } finally { save.disabled = false }
-        })
-        details.append(form)
-        credentialContainer.append(details)
-        credentialForms.set(provider.id, { form, summary })
-      }
-      const saved = credentialForms.get(provider.id)
-      saved.summary.textContent = `${provider.name} · ${provider.configured ? '已配置' : '待配置'}`
-      for (const field of fields) saved.form.elements[field.env].placeholder = field.defaultAvailable ? '已内置默认值；输入新值可覆盖' : field.configured ? '已保存；输入新值可替换' : '尚未配置'
+      const status = provider.id === 'qqread'
+        ? (provider.configured ? '已登录' : '需要手机号登录')
+        : (provider.configured ? 'App 接口' : '暂不可用')
+      controls.querySelector(`[data-provider-state="${provider.id}"]`).textContent = status
     }
-    document.getElementById('novel-credentials-section').hidden = credentialForms.size === 0
+    renderQQReaderLogin(novelProviders.find((provider) => provider.id === 'qqread')?.account || {})
+  }
+
+  function qqReaderLoginMessage(error) {
+    const messages = {
+      qqread_phone_invalid: '请输入正确的 11 位手机号。',
+      qqread_sms_session_failed: '获取短信会话失败，请稍后重试。',
+      qqread_captcha_required: '请先完成滑块验证。',
+      qqread_sms_send_failed: '短信发送失败，请重新验证或稍后再试。',
+      qqread_sms_cooldown: '该手机号刚发送过验证码，请稍后再试。',
+      qqread_sms_input_invalid: '请输入有效的短信验证码。',
+      qqread_sms_login_failed: '登录失败，请检查验证码或重新获取。',
+      qqread_login_ticket_missing: '登录响应缺少账号凭据，请重试。',
+      qqread_auth_upstream_unavailable: 'QQ 阅读登录服务暂不可用。',
+      qqread_auth_response_invalid: 'QQ 阅读登录响应无效，请稍后重试。',
+      qqread_captcha_unavailable: '滑块组件尚未加载，请刷新页面后重试。',
+    }
+    return messages[error.message] || '操作失败，请稍后重试。'
+  }
+
+  function renderQQReaderLogin(account) {
+    const panel = document.getElementById('qqread-login-panel')
+    if (!panel) return
+    panel.replaceChildren()
+
+    const form = document.createElement('div')
+    form.className = 'qqread-login'
+    const status = document.createElement('p')
+    status.className = `qqread-login-status${account.configured ? ' is-connected' : ''}`
+    status.textContent = account.configured
+      ? `已登录${account.nickname ? ` · ${account.nickname}` : ''}${account.phone ? ` · ${account.phone}` : ''}`
+      : '未登录'
+
+    const phoneRow = document.createElement('div')
+    phoneRow.className = 'qqread-login-row'
+    const phone = document.createElement('input')
+    phone.className = 'text-input'
+    phone.type = 'tel'
+    phone.inputMode = 'numeric'
+    phone.maxLength = 11
+    phone.autocomplete = 'tel'
+    phone.placeholder = '手机号'
+    phone.setAttribute('aria-label', 'QQ 阅读手机号')
+    phone.addEventListener('input', () => { qqReadSessionKey = '' })
+    const smsButton = document.createElement('button')
+    smsButton.className = 'button button-secondary'
+    smsButton.type = 'button'
+    smsButton.textContent = '获取验证码'
+    phoneRow.append(phone, smsButton)
+
+    const codeRow = document.createElement('div')
+    codeRow.className = 'qqread-login-row'
+    const code = document.createElement('input')
+    code.className = 'text-input'
+    code.type = 'text'
+    code.inputMode = 'numeric'
+    code.maxLength = 8
+    code.autocomplete = 'one-time-code'
+    code.placeholder = '短信验证码'
+    code.setAttribute('aria-label', '短信验证码')
+    const loginButton = document.createElement('button')
+    loginButton.className = 'button button-primary'
+    loginButton.type = 'button'
+    loginButton.textContent = '登录并保存'
+    codeRow.append(code, loginButton)
+
+    const footer = document.createElement('div')
+    footer.className = 'qqread-login-footer'
+    const message = document.createElement('span')
+    message.className = 'form-message'
+    message.setAttribute('role', 'status')
+    footer.append(message)
+    if (account.configured) {
+      const clearButton = document.createElement('button')
+      clearButton.className = 'button button-quiet'
+      clearButton.type = 'button'
+      clearButton.textContent = '清除登录'
+      clearButton.addEventListener('click', async () => {
+        clearButton.disabled = true
+        try {
+          await api('/api/admin/novel-providers/qqread', { method: 'DELETE' })
+          qqReadSessionKey = ''
+          renderNovelProviders(await api('/api/admin/novel-providers'))
+        } catch (error) {
+          setMessage(message, qqReaderLoginMessage(error), 'error')
+        } finally { clearButton.disabled = false }
+      })
+      footer.append(clearButton)
+    }
+
+    smsButton.addEventListener('click', async () => {
+      const value = phone.value.trim()
+      if (!/^1\d{10}$/.test(value)) {
+        setMessage(message, '请输入正确的 11 位手机号。', 'error')
+        return
+      }
+      if (typeof window.TencentCaptcha !== 'function') {
+        setMessage(message, qqReaderLoginMessage(new Error('qqread_captcha_unavailable')), 'error')
+        return
+      }
+      smsButton.disabled = true
+      qqReadSessionKey = ''
+      try {
+        const session = await api('/api/admin/novel-providers/qqread/pre-send', {
+          method: 'POST', body: JSON.stringify({ phone: value }),
+        })
+        qqReadSessionKey = session.sessionKey
+        const captcha = new window.TencentCaptcha('1600000770', async (result) => {
+          if (!result || result.ret !== 0) {
+            setMessage(message, '滑块验证未完成。', 'error')
+            return
+          }
+          try {
+            const sent = await api('/api/admin/novel-providers/qqread/confirm-send', {
+              method: 'POST',
+              body: JSON.stringify({ phone: value, sessionKey: qqReadSessionKey, ticket: result.ticket, randstr: result.randstr }),
+            })
+            qqReadSessionKey = sent.sessionKey || qqReadSessionKey
+            setMessage(message, '验证码已发送。', 'success')
+          } catch (error) {
+            setMessage(message, qqReaderLoginMessage(error), 'error')
+          }
+        })
+        captcha.show()
+      } catch (error) {
+        setMessage(message, qqReaderLoginMessage(error), 'error')
+      } finally { smsButton.disabled = false }
+    })
+
+    loginButton.addEventListener('click', async () => {
+      if (!qqReadSessionKey) {
+        setMessage(message, '请先获取验证码并完成滑块验证。', 'error')
+        return
+      }
+      loginButton.disabled = true
+      try {
+        await api('/api/admin/novel-providers/qqread/sms-login', {
+          method: 'POST',
+          body: JSON.stringify({ phone: phone.value.trim(), sessionKey: qqReadSessionKey, code: code.value.trim() }),
+        })
+        qqReadSessionKey = ''
+        renderNovelProviders(await api('/api/admin/novel-providers'))
+      } catch (error) {
+        setMessage(message, qqReaderLoginMessage(error), 'error')
+      } finally { loginButton.disabled = false }
+    })
+
+    form.append(status, phoneRow, codeRow, footer)
+    panel.append(form)
   }
 
   function formatBytes(value) {

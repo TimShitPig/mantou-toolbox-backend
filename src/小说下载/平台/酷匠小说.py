@@ -2,7 +2,6 @@
 
 import base64
 import gzip
-import os
 import re
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -13,11 +12,7 @@ PLATFORM = {
     "id": "kujiang", "name": "酷匠小说",
     "hosts": ["kujiang.com", "www.kujiang.com", "app.kujiang.com"], "aliases": ["酷匠", "酷匠小说"],
     "coverHosts": ["bs.kjcdn.com"],
-    "credentials": [
-        {"env": "NOVEL_KUJIANG_CATALOG_AUTH_CODE", "label": "酷匠目录认证码", "defaultAvailable": True},
-        {"env": "NOVEL_KUJIANG_READ_AUTH_CODE", "label": "酷匠正文认证码", "defaultAvailable": True},
-        {"env": "NOVEL_KUJIANG_AUTH_CODE", "label": "酷匠旧版认证码", "required": False, "showInAdmin": False},
-    ],
+    "credentials": [],
 }
 BASE = "https://app.kujiang.com/v1/book"
 DEFAULT_CATALOG_AUTH_CODE = "dc67efdd82941586e69207b3374037b2"
@@ -45,14 +40,11 @@ def identify(value: str) -> str:
 
 
 def headers():
-    legacy = os.environ.get("NOVEL_KUJIANG_AUTH_CODE", "").strip()
-    auth = os.environ.get("NOVEL_KUJIANG_READ_AUTH_CODE", "").strip() or legacy or DEFAULT_READ_AUTH_CODE
-    return {"auth-code": auth, "app": "com.dpx.kujiang", "platform": "android", "device-uuid": "A589D18F6E1F84A2", "version": "3.9.14", "channel": "QQ", "User-Agent": "KuJiang/3.9.14(Android;P40;7.1.2)", "Accept": "application/json"}
+    return {"auth-code": DEFAULT_READ_AUTH_CODE, "app": "com.dpx.kujiang", "platform": "android", "device-uuid": "A589D18F6E1F84A2", "version": "3.9.14", "channel": "QQ", "User-Agent": "KuJiang/3.9.14(Android;P40;7.1.2)", "Accept": "application/json"}
 
 
 def catalog_auth_code():
-    legacy = os.environ.get("NOVEL_KUJIANG_AUTH_CODE", "").strip()
-    return os.environ.get("NOVEL_KUJIANG_CATALOG_AUTH_CODE", "").strip() or legacy or DEFAULT_CATALOG_AUTH_CODE
+    return DEFAULT_CATALOG_AUTH_CODE
 
 
 def catalog_headers():

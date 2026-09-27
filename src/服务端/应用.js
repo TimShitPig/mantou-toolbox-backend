@@ -47,6 +47,7 @@ const {
 } = require('./小说来源')
 const { downloadFanqieNovel } = require('./番茄小说下载')
 const { getNovelProviders, getNovelProvider, novelProviderStates, downloadProviderNovel } = require('./小说平台')
+const { requestSmsSession, sendSmsCode, loginBySms } = require('./QQ阅读手机号登录')
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 const MAX_PROXY_BYTES = 5 * 1024 * 1024
@@ -305,6 +306,8 @@ function createApp(options = {}) {
   let downloadCleanupTimer = null
   let downloadCleanupRunning = false
   const updateCache = new Map()
+  const qqReaderSmsCooldown = new Map()
+  const qqReaderFetch = options.qqReaderFetchImpl || options.fetchImpl || globalThis.fetch
 
   function recordSystemLog(level, source, message, context = {}) {
     const entry = {
@@ -709,33 +712,62 @@ function createApp(options = {}) {
 
   async function handleAdminNovelProviders(req, res, origin) {
     requireAdminSession(req)
-    if (req.method === 'GET') {
-      sendJson(res, config, 200, { data: novelProviderStates(getRuntimeConfig(), true) }, origin)
-      return
-    }
-    assertMethod(req, 'PATCH')
-    const body = await readJson(req, 128 * 1024)
-    const provider = getNovelProvider(String(body.source || ''))
-    if (!provider) throw new ApiError(400, 'unsupported_source')
-    const fields = new Map((provider.credentials || []).map((field) => [field.env, field]))
-    const submitted = body.credentials || {}
-    if (typeof submitted !== 'object' || Array.isArray(submitted)) throw new ApiError(400, 'novel_credentials_invalid')
-    const credentials = { ...getRuntimeConfig().novelProviderEnv }
-    for (const [key, value] of Object.entries(submitted)) {
-      if (!fields.has(key) || typeof value !== 'string' || value.length > 32768 || value.includes('\0')) throw new ApiError(400, 'novel_credentials_invalid')
-      if (!value.trim()) continue
-      if (fields.get(key).type === 'json') {
-        let parsed
-        try { parsed = JSON.parse(value) } catch { throw new ApiError(400, 'novel_credentials_json_invalid') }
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new ApiError(400, 'novel_credentials_json_invalid')
-      }
-      credentials[key] = value.trim()
-    }
-    const clear = body.clearCredentials || []
-    if (!Array.isArray(clear) || clear.some((key) => !fields.has(key))) throw new ApiError(400, 'novel_credentials_invalid')
-    for (const key of clear) delete credentials[key]
+    assertMethod(req, 'GET')
+    sendJson(res, config, 200, { data: novelProviderStates(getRuntimeConfig(), true) }, origin)
+  }
+
+  function saveNovelProviderCredentials(values) {
+    const credentials = { ...(getRuntimeConfig().novelProviderEnv || {}), ...values }
     store.setAdminSettings({ novelCredentialsEncrypted: encryptCookie(JSON.stringify(credentials), `${config.appSecret}:novel-providers`) })
-    recordSystemLog('info', 'settings', 'Updated novel platform credentials', { meta: { source: provider.id } })
+  }
+
+  async function handleQQReaderSmsPreSend(req, res, origin) {
+    requireAdminSession(req)
+    assertMethod(req, 'POST')
+    const body = await readJson(req, 16 * 1024)
+    const result = await requestSmsSession(body && typeof body === 'object' ? body.phone : '', qqReaderFetch)
+    sendJson(res, config, 200, { data: result }, origin)
+  }
+
+  async function handleQQReaderSmsSend(req, res, origin) {
+    requireAdminSession(req)
+    assertMethod(req, 'POST')
+    const body = await readJson(req, 16 * 1024)
+    const phone = String(body && typeof body === 'object' ? body.phone || '' : '').trim()
+    const cooldownUntil = qqReaderSmsCooldown.get(phone) || 0
+    if (cooldownUntil > Date.now()) throw new ApiError(429, 'qqread_sms_cooldown')
+    const result = await sendSmsCode(body, qqReaderFetch)
+    qqReaderSmsCooldown.set(result.phone, Date.now() + 60_000)
+    if (qqReaderSmsCooldown.size > 256) {
+      for (const [key, expiry] of qqReaderSmsCooldown) if (expiry <= Date.now()) qqReaderSmsCooldown.delete(key)
+    }
+    sendJson(res, config, 200, { data: result }, origin)
+  }
+
+  async function handleQQReaderSmsLogin(req, res, origin) {
+    requireAdminSession(req)
+    assertMethod(req, 'POST')
+    const body = await readJson(req, 16 * 1024)
+    const account = await loginBySms(body, qqReaderFetch)
+    saveNovelProviderCredentials({
+      NOVEL_QQREAD_YWGUID: account.ywguid,
+      NOVEL_QQREAD_YWKEY: account.ywkey,
+      NOVEL_QQREAD_PHONE: account.phone,
+      NOVEL_QQREAD_NICKNAME: account.nickname,
+    })
+    recordSystemLog('info', 'settings', 'QQ Reader phone login completed')
+    sendJson(res, config, 200, { data: { message: 'qqread_login_success' } }, origin)
+  }
+
+  async function handleQQReaderAuthDelete(req, res, origin) {
+    requireAdminSession(req)
+    assertMethod(req, 'DELETE')
+    const provider = getNovelProvider('qqread')
+    if (!provider) throw new ApiError(404, 'unsupported_source')
+    const credentials = { ...(getRuntimeConfig().novelProviderEnv || {}) }
+    for (const field of provider.credentials || []) credentials[field.env] = ''
+    saveNovelProviderCredentials(credentials)
+    recordSystemLog('info', 'settings', 'QQ Reader login cleared')
     sendJson(res, config, 200, { data: novelProviderStates(getRuntimeConfig(), true) }, origin)
   }
 
@@ -1266,6 +1298,10 @@ function createApp(options = {}) {
       if (pathname === '/api/admin/proxies/test') return await handleAdminProxyTest(req, res, origin)
       if (pathname === '/api/admin/settings') return await handleAdminSettings(req, res, origin)
       if (pathname === '/api/admin/novel-providers') return await handleAdminNovelProviders(req, res, origin)
+      if (pathname === '/api/admin/novel-providers/qqread/pre-send') return await handleQQReaderSmsPreSend(req, res, origin)
+      if (pathname === '/api/admin/novel-providers/qqread/confirm-send') return await handleQQReaderSmsSend(req, res, origin)
+      if (pathname === '/api/admin/novel-providers/qqread/sms-login') return await handleQQReaderSmsLogin(req, res, origin)
+      if (pathname === '/api/admin/novel-providers/qqread') return await handleQQReaderAuthDelete(req, res, origin)
       if (pathname === '/api/admin/quark') return await handleAdminQuark(req, res, origin)
       if (pathname === '/api/admin/quark/test') return await handleAdminQuarkTest(req, res, origin)
       const quarkFileDeleteMatch = pathname.match(/^\/api\/admin\/quark\/files\/([a-f0-9-]{36})$/i)
