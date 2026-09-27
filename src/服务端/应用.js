@@ -460,7 +460,7 @@ function createApp(options = {}) {
       'Content-Length': body.length,
       'Cache-Control': 'no-cache',
       'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy': "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+      'Content-Security-Policy': "default-src 'self'; style-src 'self'; script-src 'self' https://ssl.captcha.qq.com https://turing.captcha.qcloud.com; img-src 'self' data: https://t.captcha.qq.com https://turing.captcha.qcloud.com https://sg.captcha.qcloud.com https://captcha.gtimg.com https://global.captcha.gtimg.com; connect-src 'self' https://ssl.captcha.qq.com https://t.captcha.qq.com https://turing.captcha.qcloud.com https://sg.captcha.qcloud.com https://captcha.gtimg.com https://global.captcha.gtimg.com https://t-captcha.gjacky.com; frame-src https://t.captcha.qq.com https://turing.captcha.qcloud.com https://sg.captcha.qcloud.com https://captcha.gtimg.com https://global.captcha.gtimg.com https://t-captcha.gjacky.com; base-uri 'none'; frame-ancestors 'none'",
     })
     res.end(body)
   }

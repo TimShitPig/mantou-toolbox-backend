@@ -35,6 +35,7 @@
   let systemLogItems = []
   let novelProviders = []
   let qqReadSessionKey = ''
+  let tencentCaptchaPromise = null
 
   const settingForms = {
     novel: {
@@ -316,6 +317,41 @@
     return messages[error.message] || '操作失败，请稍后重试。'
   }
 
+  function ensureTencentCaptcha() {
+    if (typeof window.TencentCaptcha === 'function') return Promise.resolve()
+    if (!tencentCaptchaPromise) {
+      tencentCaptchaPromise = (async () => {
+        for (const src of [
+          'https://ssl.captcha.qq.com/TCaptcha.js',
+          'https://turing.captcha.qcloud.com/TCaptcha.js',
+        ]) {
+          try {
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script')
+              script.src = src
+              script.async = true
+              script.onload = () => {
+                if (typeof window.TencentCaptcha === 'function') resolve()
+                else {
+                  script.remove()
+                  reject(new Error('captcha_sdk_missing'))
+                }
+              }
+              script.onerror = () => {
+                script.remove()
+                reject(new Error('captcha_sdk_load_failed'))
+              }
+              document.head.append(script)
+            })
+            return
+          } catch {}
+        }
+        throw new Error('qqread_captcha_unavailable')
+      })().finally(() => { tencentCaptchaPromise = null })
+    }
+    return tencentCaptchaPromise
+  }
+
   function renderQQReaderLogin(account) {
     const panel = document.getElementById('qqread-login-panel')
     if (!panel) return
@@ -392,10 +428,6 @@
         setMessage(message, '请输入正确的 11 位手机号。', 'error')
         return
       }
-      if (typeof window.TencentCaptcha !== 'function') {
-        setMessage(message, qqReaderLoginMessage(new Error('qqread_captcha_unavailable')), 'error')
-        return
-      }
       smsButton.disabled = true
       qqReadSessionKey = ''
       try {
@@ -403,6 +435,7 @@
           method: 'POST', body: JSON.stringify({ phone: value }),
         })
         qqReadSessionKey = session.sessionKey
+        await ensureTencentCaptcha()
         const captcha = new window.TencentCaptcha('1600000770', async (result) => {
           if (!result || result.ret !== 0) {
             setMessage(message, '滑块验证未完成。', 'error')
