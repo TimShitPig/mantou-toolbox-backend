@@ -13,7 +13,8 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8787 \
     APP_BASE_URL=http://127.0.0.1:8787 \
-    PYTHON_BIN=/usr/bin/python3
+    PYTHON_BIN=/usr/bin/python3 \
+    PYTHONPATH=/usr/lib/python3/dist-packages
 
 # Copy runtime files for the server and novel App adapters.
 COPY package.json ./
