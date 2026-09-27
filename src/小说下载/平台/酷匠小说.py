@@ -4,7 +4,6 @@ import base64
 import gzip
 import os
 import re
-import uuid
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from .公共 import ProviderError
@@ -14,9 +13,15 @@ PLATFORM = {
     "id": "kujiang", "name": "酷匠小说",
     "hosts": ["kujiang.com", "www.kujiang.com", "app.kujiang.com"], "aliases": ["酷匠", "酷匠小说"],
     "coverHosts": ["bs.kjcdn.com"],
-    "credentials": [{"env": "NOVEL_KUJIANG_AUTH_CODE", "label": "酷匠 App 认证码"}],
+    "credentials": [
+        {"env": "NOVEL_KUJIANG_CATALOG_AUTH_CODE", "label": "酷匠目录认证码", "defaultAvailable": True},
+        {"env": "NOVEL_KUJIANG_READ_AUTH_CODE", "label": "酷匠正文认证码", "defaultAvailable": True},
+        {"env": "NOVEL_KUJIANG_AUTH_CODE", "label": "酷匠旧版认证码", "required": False, "showInAdmin": False},
+    ],
 }
 BASE = "https://app.kujiang.com/v1/book"
+DEFAULT_CATALOG_AUTH_CODE = "dc67efdd82941586e69207b3374037b2"
+DEFAULT_READ_AUTH_CODE = "440590fab1b828085ab67fdc9fc40cbb"
 
 
 def identify(value: str) -> str:
@@ -40,10 +45,18 @@ def identify(value: str) -> str:
 
 
 def headers():
-    auth = os.environ.get("NOVEL_KUJIANG_AUTH_CODE", "").strip()
-    if not auth:
-        raise ProviderError("credentials_required")
-    return {"auth-code": auth, "app": "com.dpx.kujiang", "platform": "android", "device-uuid": uuid.uuid4().hex[:16], "version": "3.9.14", "channel": "QQ", "User-Agent": "KuJiang/3.9.14(Android)"}
+    legacy = os.environ.get("NOVEL_KUJIANG_AUTH_CODE", "").strip()
+    auth = os.environ.get("NOVEL_KUJIANG_READ_AUTH_CODE", "").strip() or legacy or DEFAULT_READ_AUTH_CODE
+    return {"auth-code": auth, "app": "com.dpx.kujiang", "platform": "android", "device-uuid": "A589D18F6E1F84A2", "version": "3.9.14", "channel": "QQ", "User-Agent": "KuJiang/3.9.14(Android;P40;7.1.2)", "Accept": "application/json"}
+
+
+def catalog_auth_code():
+    legacy = os.environ.get("NOVEL_KUJIANG_AUTH_CODE", "").strip()
+    return os.environ.get("NOVEL_KUJIANG_CATALOG_AUTH_CODE", "").strip() or legacy or DEFAULT_CATALOG_AUTH_CODE
+
+
+def catalog_headers():
+    return {"auth-code": catalog_auth_code(), "app": "com.dpx.kujiang", "platform": "android", "device-uuid": "5dd1f054b2f013b9", "version": "3.9.7", "channel": "XIAOMI", "User-Agent": "KuJiang/3.9.7", "Accept": "application/json"}
 
 
 def success(data):
@@ -60,7 +73,7 @@ async def load(client, book_id, auth):
     raw = detail.get("bookinfo") if isinstance(detail, dict) else None
     if not isinstance(raw, dict):
         raise ProviderError("book_not_found")
-    catalog = success(await request_json(client, "GET", f"{BASE}/catalog", params={"book": book_id, "auth_code": auth, "sort": "asc"}))
+    catalog = success(await request_json(client, "GET", f"{BASE}/catalog", params={"book": book_id, "auth_code": auth, "sort": "asc"}, headers=catalog_headers()))
     volumes = catalog.get("catalog") if isinstance(catalog, dict) else None
     if not isinstance(volumes, list):
         raise ProviderError("provider_invalid_response")
@@ -98,14 +111,14 @@ def decrypt(value):
 async def get_book(book_id):
     config = headers()
     async with session(config) as client:
-        book, _ = await load(client, book_id, config["auth-code"])
+        book, _ = await load(client, book_id, catalog_auth_code())
         return book
 
 
 async def download_book(book_id, on_progress):
     config = headers()
     async with session(config) as client:
-        book, chapters = await load(client, book_id, config["auth-code"])
+        book, chapters = await load(client, book_id, catalog_auth_code())
 
         async def fetch(chapter):
             raw = success(await request_json(client, "GET", f"{BASE}/read", params={"book": book["sourceBookId"], "chapter": chapter["id"]}))

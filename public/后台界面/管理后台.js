@@ -362,7 +362,7 @@
       }
       const saved = credentialForms.get(provider.id)
       saved.summary.textContent = `${provider.name} · ${provider.configured ? '已配置' : '待配置'}`
-      for (const field of fields) saved.form.elements[field.env].placeholder = field.configured ? '已保存；输入新值可替换' : '尚未配置'
+      for (const field of fields) saved.form.elements[field.env].placeholder = field.defaultAvailable ? '已内置默认值；输入新值可覆盖' : field.configured ? '已保存；输入新值可替换' : '尚未配置'
     }
     document.getElementById('novel-credentials-section').hidden = credentialForms.size === 0
   }

@@ -7,9 +7,9 @@ import aiohttp
 from .公共 import ProviderError
 from .组B公共 import identify_id, book_id as _book_id, cover, metadata, validate_catalog_count, session as _session, retry as _retry, json_request, chapters_map
 logger = logging.getLogger(__name__)
-PLATFORM = {'id': 'shuqi', 'name': '书旗小说', 'hosts': ['shuqi.com', 'shuqireader.com'], 'aliases': ['书旗'], 'coverHosts': ['img-tail.shuqireader.com', 'img.shuqi.com', 'img.shuqireader.com'], 'credentials': [{'env': 'NOVEL_SHUQI_USER_ID', 'label': '书旗 App 用户 ID', 'hint': '目录接口签名需要有效的书旗用户 ID'}]}
+PLATFORM = {'id': 'shuqi', 'name': '书旗小说', 'hosts': ['shuqi.com', 'shuqireader.com'], 'aliases': ['书旗'], 'coverHosts': ['img-tail.shuqireader.com', 'img.shuqi.com', 'img.shuqireader.com'], 'credentials': [{'env': 'NOVEL_SHUQI_USER_ID', 'label': '书旗 App 用户 ID', 'hint': '内置默认值；可填写自己的用户 ID 覆盖。', 'defaultAvailable': True}]}
 IOS目录URL = 'https://ocean.shuqireader.com/api/bcspub/iosapi/book/chapterlist'
-IOS目录UID = os.environ.get('NOVEL_SHUQI_USER_ID', '').strip()
+IOS目录UID = os.environ.get('NOVEL_SHUQI_USER_ID', '').strip() or '8000000'
 IOS目录盐值 = '37e81a9d8f02596e1b895d07c171d5c9'
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36'
 
